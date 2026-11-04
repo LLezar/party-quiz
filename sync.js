@@ -3,7 +3,7 @@
     // Утилита проверки на объект
     const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
 
-    // Глубокое слияние состояний
+    // Глубокое слияние состояний (предотвращает локальную потерю данных игроков, таких как score и position)
     const mergeDeep = (target, source) => {
         if (!isObject(target) || !isObject(source)) return source;
         const output = Object.assign({}, target);
@@ -15,13 +15,25 @@
                     output[key] = mergeDeep(target[key], source[key]);
                 }
             } else {
-                Object.assign(output, { [key]: source[key] });
+                output[key] = source[key];
             }
         });
         return output;
     };
 
-    // Очистка и валидация входящих данных
+    // Плоское преобразование объекта для безопасного PATCH-запроса в Firebase.
+    const flattenObject = (obj, prefix = '') => {
+        return Object.keys(obj).reduce((acc, k) => {
+            const pre = prefix.length ? prefix + '/' : '';
+            if (isObject(obj[k]) && Object.keys(obj[k]).length > 0) {
+                Object.assign(acc, flattenObject(obj[k], pre + k));
+            } else {
+                acc[pre + k] = obj[k];
+            }
+            return acc;
+        }, {});
+    };
+
     const sanitize = (data) => {
         if (!data) return {};
         try {
@@ -32,11 +44,9 @@
         }
     };
 
-    // Твой дефолтный URL базы данных (Бельгия, europe-west1)
     const DEFAULT_DB_URL = 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app';
 
     window.GameSync = {
-        role: null,
         roomCode: null,
         dbUrl: DEFAULT_DB_URL,
         isFirebase: false,
@@ -48,14 +58,18 @@
         _firebaseErrorLogged: false,
 
         // Инициализация соединения
-        init: function(role, roomCode, dbUrl, onStateChangeCallback) {
-            this.role = role;
-            // Очистка roomCode: только буквы и цифры, защита от спецсимволов ломающих пути Firebase
+        init: function(roomCode, dbUrl, onStateChangeCallback) {
+            // Поддержка старой сигнатуры вызова (role, roomCode, dbUrl, callback)
+            if (arguments[0] === 'host' || arguments[0] === 'player') {
+                roomCode = arguments[1];
+                dbUrl = arguments[2];
+                onStateChangeCallback = arguments[3];
+            }
+
             this.roomCode = (roomCode || '').replace(/[^a-zA-Z0-9]/g, '');
             
-            // Если dbUrl не передан или пустой, берем из localStorage или используем твой дефолтный URL
-            const rawUrl = (dbUrl && dbUrl.trim()) || localStorage.getItem('firebaseDbUrl') || DEFAULT_DB_URL;
-            this.dbUrl = rawUrl.trim().replace(/\/+$/, ''); // Очистка завершающего слеша
+            const rawUrl = (dbUrl && typeof dbUrl === 'string' && dbUrl.trim()) || localStorage.getItem('firebaseDbUrl') || DEFAULT_DB_URL;
+            this.dbUrl = rawUrl.trim().replace(/\/+$/, '');
             try {
                 localStorage.setItem('firebaseDbUrl', this.dbUrl);
             } catch (e) {}
@@ -70,7 +84,6 @@
             if (this.pollTimer) clearInterval(this.pollTimer);
             if (this.channel) this.channel.close();
 
-            // ВСЕГДА инициализируем BroadcastChannel как железобетонный Fallback / параллельный канал
             try {
                 this.channel = new BroadcastChannel(`game_room_${this.roomCode}`);
                 this.channel.onmessage = (event) => {
@@ -82,40 +95,30 @@
                         this._notify(patch);
                     }
                 };
-                console.log(`GameSync: BroadcastChannel initialized for local room [${this.roomCode}]`);
             } catch (e) {
                 console.error("GameSync: BroadcastChannel failed", e);
             }
 
-            // Поддержка и американских (firebaseio.com), и европейских (firebasedatabase.app) доменов Firebase
             const isValidDb = this.dbUrl && 
                 this.dbUrl.startsWith('https://') && 
                 (this.dbUrl.includes('firebaseio.com') || this.dbUrl.includes('firebasedatabase.app'));
 
             if (isValidDb) {
                 this.isFirebase = true;
-                console.log(`GameSync: Initialized via Firebase REST API [${this.dbUrl}] for room [${this.roomCode}]`);
-                
-                // Пробный запрос для проверки доступности БД
                 this._pollFirebase().catch(() => {
                     this._triggerError('Ошибка Firebase, используется локальный режим');
                 });
-                
                 this.pollTimer = setInterval(() => this._pollFirebase(), 1200);
             } else {
                 this.isFirebase = false;
-                if (this.dbUrl || role === 'player') {
-                    this._triggerError('Нет подключения к БД. Включен режим локальных вкладок.');
-                }
+                this._triggerError('Нет подключения к БД. Включен режим локальных вкладок.');
             }
         },
 
-        // Подписка на изменения стейта
         onStateChange: function(callback) {
             this.onStateChangeCallback = callback;
         },
 
-        // Подписка на ошибки
         onError: function(callback) {
             this.onErrorCallback = callback;
         },
@@ -130,7 +133,6 @@
             }
         },
 
-        // Обновление состояния (в основном для ТВ)
         updateState: async function(newState) {
             const safeState = sanitize(newState);
             this._notify(safeState);
@@ -141,10 +143,11 @@
 
             if (this.isFirebase) {
                 try {
+                    const flatState = flattenObject(safeState);
                     await fetch(`${this.dbUrl}/rooms/${this.roomCode}.json`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(safeState)
+                        body: JSON.stringify(flatState)
                     });
                 } catch (e) {
                     this._triggerError('Ошибка Firebase при обновлении, используется локальный режим');
@@ -152,7 +155,6 @@
             }
         },
 
-        // Точечное обновление данных игрока
         patchPlayer: async function(roomCode, playerId, playerData) {
             const safeData = sanitize(playerData);
             const cleanRoomCode = (roomCode || this.roomCode || '').replace(/[^a-zA-Z0-9]/g, '');
@@ -167,10 +169,11 @@
 
             if (this.isFirebase) {
                 try {
-                    await fetch(`${this.dbUrl}/rooms/${cleanRoomCode}/players/${playerId}.json`, {
+                    const flatPatch = flattenObject(safeData, `players/${playerId}`);
+                    await fetch(`${this.dbUrl}/rooms/${cleanRoomCode}.json`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(safeData)
+                        body: JSON.stringify(flatPatch)
                     });
                 } catch (e) {
                     this._triggerError('Ошибка Firebase при обновлении игрока, используется локальный режим');
@@ -178,40 +181,68 @@
             }
         },
 
-        // Добавление игрока в комнату
-        joinGame: async function(playerData) {
-            return this.patchPlayer(this.roomCode, playerData.id, playerData);
+        // --- ВАЖНЫЕ МЕТОДЫ ВЗАИМОДЕЙСТВИЯ (ВОССТАНОВЛЕНЫ) ---
+        joinGame: function(playerData) {
+            if (!playerData || !playerData.id) return;
+            this.patchPlayer(this.roomCode, playerData.id, playerData);
         },
 
-        // Отправка действий от телефона к ТВ
-        sendAction: async function(actionType, payload) {
-            const playerId = sessionStorage.getItem('playerId') || localStorage.getItem('playerId');
+        sendAction: function(actionType, payload) {
+            const playerId = localStorage.getItem('playerId');
             if (!playerId) return;
 
-            if (this.channel) {
-                let localPatch = {};
-                if (actionType === 'answer') localPatch = { players: { [playerId]: { currentAnswer: payload.answerIndex } } };
-                else if (actionType === 'vote') localPatch = { players: { [playerId]: { currentVote: payload.categoryId } } };
-                else if (actionType === 'ready') localPatch = { players: { [playerId]: { isReady: payload.isReady } } };
-                
-                this.channel.postMessage({ type: 'STATE_UPDATE', state: localPatch });
+            if (actionType === 'vote') {
+                this.patchPlayer(this.roomCode, playerId, { currentVote: payload.categoryId });
+            } else if (actionType === 'answer') {
+                this.patchPlayer(this.roomCode, playerId, { currentAnswer: payload.answerIndex });
             }
+        },
 
-            if (this.isFirebase) {
-                let flatPatch = {};
-                if (actionType === 'answer') flatPatch = { [`players/${playerId}/currentAnswer`]: payload.answerIndex };
-                else if (actionType === 'vote') flatPatch = { [`players/${playerId}/currentVote`]: payload.categoryId };
-                else if (actionType === 'ready') flatPatch = { [`players/${playerId}/isReady`]: payload.isReady };
+        // --- НОВЫЙ МОДУЛЬ КАМЕРЫ ---
+        initCamera: async function(videoElement) {
+            if (!videoElement) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                videoElement.srcObject = stream;
+                videoElement.setAttribute('playsinline', 'true');
+                videoElement.setAttribute('autoplay', 'true');
+                videoElement.setAttribute('muted', 'true');
+                await new Promise((resolve, reject) => {
+                    videoElement.onloadedmetadata = () => {
+                        videoElement.play().then(resolve).catch(reject);
+                    };
+                    videoElement.onerror = reject;
+                });
+            } catch (err) {
+                console.error("GameSync: Camera init failed", err);
+                throw err;
+            }
+        },
 
-                try {
-                    await fetch(`${this.dbUrl}/rooms/${this.roomCode}.json`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(flatPatch)
-                    });
-                } catch(e) {
-                    this._triggerError('Ошибка Firebase при отправке действия, используется локальный режим');
-                }
+        takePhoto: function(videoElement, canvasElement) {
+            if (!videoElement || !canvasElement) return null;
+            const ctx = canvasElement.getContext('2d');
+            const targetSize = 120;
+            canvasElement.width = targetSize;
+            canvasElement.height = targetSize;
+
+            const vWidth = videoElement.videoWidth || 120;
+            const vHeight = videoElement.videoHeight || 120;
+            const size = Math.min(vWidth, vHeight);
+            
+            const startX = (vWidth - size) / 2;
+            const startY = (vHeight - size) / 2;
+
+            ctx.drawImage(videoElement, startX, startY, size, size, 0, 0, targetSize, targetSize);
+            
+            // Сжатие до 0.5 (макс ~50kb)
+            return canvasElement.toDataURL('image/jpeg', 0.5); 
+        },
+
+        stopCamera: function(videoElement) {
+            if (videoElement && videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
             }
         },
 
@@ -234,69 +265,12 @@
             }
         },
 
-        // Уведомление подписчиков
         _notify: function(partialState) {
             this.currentState = mergeDeep(this.currentState, partialState);
             if (typeof this.onStateChangeCallback === 'function') {
                 this.onStateChangeCallback(this.currentState);
             }
         }
-    };
-
-    // Безопасный захват селфи с фронтальной камеры
-    window.captureSelfie = function(existingVideoElement) {
-        return new Promise(async (resolve, reject) => {
-            let stream = null;
-            let video = existingVideoElement;
-            let createdLocally = false;
-
-            try {
-                if (!video || !video.srcObject) {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-                    video = document.createElement('video');
-                    video.srcObject = stream;
-                    video.setAttribute('playsinline', 'true');
-                    video.setAttribute('autoplay', 'true');
-                    video.setAttribute('muted', 'true');
-                    createdLocally = true;
-
-                    await new Promise((res, rej) => {
-                        video.onloadedmetadata = () => { video.play(); setTimeout(res, 500); };
-                        video.onerror = rej;
-                    });
-                } else {
-                    await new Promise(res => setTimeout(res, 200));
-                }
-
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                const targetSize = 120;
-                canvas.width = targetSize;
-                canvas.height = targetSize;
-
-                const vWidth = video.videoWidth || 120;
-                const vHeight = video.videoHeight || 120;
-                const size = Math.min(vWidth, vHeight);
-                
-                const startX = (vWidth - size) / 2;
-                const startY = (vHeight - size) / 2;
-
-                ctx.drawImage(video, startX, startY, size, size, 0, 0, targetSize, targetSize);
-                
-                if (createdLocally && stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                }
-                
-                resolve(canvas.toDataURL('image/jpeg', 0.65));
-
-            } catch (err) {
-                console.error("captureSelfie: Permission denied or error", err);
-                if (createdLocally && stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                }
-                reject(err);
-            }
-        });
     };
 
 })();
