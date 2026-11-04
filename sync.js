@@ -3,7 +3,7 @@
     // Утилита проверки на объект
     const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
 
-    // Глубокое слияние состояний (предотвращает локальную потерю данных игроков, таких как score и position)
+    // Глубокое слияние состояний
     const mergeDeep = (target, source) => {
         if (!isObject(target) || !isObject(source)) return source;
         const output = Object.assign({}, target);
@@ -21,7 +21,7 @@
         return output;
     };
 
-    // Плоское преобразование объекта для безопасного PATCH-запроса в Firebase.
+    // Плоское преобразование объекта для безопасного PATCH-запроса в Firebase
     const flattenObject = (obj, prefix = '') => {
         return Object.keys(obj).reduce((acc, k) => {
             const pre = prefix.length ? prefix + '/' : '';
@@ -44,6 +44,32 @@
         }
     };
 
+    // Глобальная функция захвата селфи в высоком качестве с оптимизацией веса
+    window.captureSelfie = function(videoElement) {
+        if (!videoElement) return null;
+        
+        const canvas = document.createElement('canvas');
+        const targetSize = 320; // Высокая четкость при оптимальном весе
+        canvas.width = targetSize;
+        canvas.height = targetSize;
+        
+        const ctx = canvas.getContext('2d');
+        const vWidth = videoElement.videoWidth || 320;
+        const vHeight = videoElement.videoHeight || 320;
+        const minSide = Math.min(vWidth, vHeight);
+        
+        const sx = (vWidth - minSide) / 2;
+        const sy = (vHeight - minSide) / 2;
+
+        ctx.drawImage(videoElement, sx, sy, minSide, minSide, 0, 0, targetSize, targetSize);
+        
+        let dataUrl = canvas.toDataURL('image/webp', 0.8);
+        if (!dataUrl || dataUrl.indexOf('data:image/webp') !== 0) {
+            dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        }
+        return dataUrl;
+    };
+
     const DEFAULT_DB_URL = 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app';
 
     window.GameSync = {
@@ -57,9 +83,7 @@
         pollTimer: null,
         _firebaseErrorLogged: false,
 
-        // Инициализация соединения
         init: function(roomCode, dbUrl, onStateChangeCallback) {
-            // Поддержка старой сигнатуры вызова (role, roomCode, dbUrl, callback)
             if (arguments[0] === 'host' || arguments[0] === 'player') {
                 roomCode = arguments[1];
                 dbUrl = arguments[2];
@@ -181,14 +205,13 @@
             }
         },
 
-        // --- ВАЖНЫЕ МЕТОДЫ ВЗАИМОДЕЙСТВИЯ (ВОССТАНОВЛЕНЫ) ---
         joinGame: function(playerData) {
             if (!playerData || !playerData.id) return;
             this.patchPlayer(this.roomCode, playerData.id, playerData);
         },
 
         sendAction: function(actionType, payload) {
-            const playerId = localStorage.getItem('playerId');
+            const playerId = localStorage.getItem('party_quiz_player_id');
             if (!playerId) return;
 
             if (actionType === 'vote') {
@@ -198,11 +221,16 @@
             }
         },
 
-        // --- НОВЫЙ МОДУЛЬ КАМЕРЫ ---
         initCamera: async function(videoElement) {
             if (!videoElement) return;
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 640 }
+                    } 
+                });
                 videoElement.srcObject = stream;
                 videoElement.setAttribute('playsinline', 'true');
                 videoElement.setAttribute('autoplay', 'true');
@@ -220,23 +248,26 @@
         },
 
         takePhoto: function(videoElement, canvasElement) {
-            if (!videoElement || !canvasElement) return null;
-            const ctx = canvasElement.getContext('2d');
-            const targetSize = 120;
-            canvasElement.width = targetSize;
-            canvasElement.height = targetSize;
-
-            const vWidth = videoElement.videoWidth || 120;
-            const vHeight = videoElement.videoHeight || 120;
-            const size = Math.min(vWidth, vHeight);
-            
-            const startX = (vWidth - size) / 2;
-            const startY = (vHeight - size) / 2;
-
-            ctx.drawImage(videoElement, startX, startY, size, size, 0, 0, targetSize, targetSize);
-            
-            // Сжатие до 0.5 (макс ~50kb)
-            return canvasElement.toDataURL('image/jpeg', 0.5); 
+            if (!videoElement) return null;
+            if (canvasElement) {
+                const targetSize = 320;
+                canvasElement.width = targetSize;
+                canvasElement.height = targetSize;
+                const ctx = canvasElement.getContext('2d');
+                const vWidth = videoElement.videoWidth || 320;
+                const vHeight = videoElement.videoHeight || 320;
+                const size = Math.min(vWidth, vHeight);
+                const startX = (vWidth - size) / 2;
+                const startY = (vHeight - size) / 2;
+                ctx.drawImage(videoElement, startX, startY, size, size, 0, 0, targetSize, targetSize);
+                
+                let dataUrl = canvasElement.toDataURL('image/webp', 0.8);
+                if (!dataUrl || dataUrl.indexOf('data:image/webp') !== 0) {
+                    dataUrl = canvasElement.toDataURL('image/jpeg', 0.8);
+                }
+                return dataUrl;
+            }
+            return window.captureSelfie(videoElement);
         },
 
         stopCamera: function(videoElement) {
@@ -246,7 +277,6 @@
             }
         },
 
-        // Опрос Firebase
         _pollFirebase: async function() {
             if (!this.isFirebase) return;
             try {
@@ -272,5 +302,4 @@
             }
         }
     };
-
 })();
