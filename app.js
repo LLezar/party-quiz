@@ -22,6 +22,16 @@ const PLAYER_COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FFCC00', '#AF52DE', '#
 // Проверка, что ответ действительно выбран (защита от undefined в Firebase)
 const hasValidAnswer = (val) => typeof val === 'number' && val >= 0 && val <= 3;
 
+// Сортировка игроков по местам (по позиции на поле, при равенстве — по общему счету)
+const getSortedStandings = (playersObj) => {
+    const list = Object.values(playersObj || {});
+    return list.sort((a, b) => {
+        const posDiff = (b.position || 0) - (a.position || 0);
+        if (posDiff !== 0) return posDiff;
+        return (b.score || 0) - (a.score || 0);
+    });
+};
+
 // Фигурка игрока на доске
 const Pawn = ({ color, selfie, isWalking, position }) => {
     const pos = getGridPos(position || 0);
@@ -247,8 +257,8 @@ const TVApp = ({ roomId, dbUrl }) => {
         }
     }, [gameState?.status, joinUrl]);
 
-    // Старт нового раунда
-    const startNewRound = () => {
+    // Старт нового раунда (принимает актуальный словарь игроков, чтобы НЕ сбрасывать позиции из-за устаревшего замыкания!)
+    const startNewRound = (overridePlayers = null) => {
         if (nextQuestionTimeoutRef.current) clearTimeout(nextQuestionTimeoutRef.current);
         resultTransitionLockRef.current = false;
 
@@ -258,12 +268,16 @@ const TVApp = ({ roomId, dbUrl }) => {
             { id: 'music', name: 'Музыка', icon: '🎵' }
         ];
 
-        const updatedPlayers = JSON.parse(JSON.stringify(gameState.players || {}));
+        // Берем самые свежие данные из overridePlayers или из глобального GameSync.currentState
+        const sourcePlayers = overridePlayers || window.GameSync.currentState?.players || gameState?.players || {};
+        const updatedPlayers = JSON.parse(JSON.stringify(sourcePlayers));
         roundCorrectRef.current = {};
         Object.keys(updatedPlayers).forEach(pid => {
             updatedPlayers[pid].currentVote = null;
             updatedPlayers[pid].currentAnswer = -1;
             updatedPlayers[pid].answeredQIndex = -1;
+            // Позицию (position) и очки (score) бережно сохраняем!
+            updatedPlayers[pid].position = updatedPlayers[pid].position || 0;
             roundCorrectRef.current[pid] = 0;
         });
 
@@ -296,12 +310,18 @@ const TVApp = ({ roomId, dbUrl }) => {
             } else {
                 handleVoteFinished();
             }
+        } else if (status === 'round_standings') {
+            // 10-секундный показ турнирной таблицы с местами после завершения прыжков
+            if (timer > 0) {
+                timerId = setTimeout(() => window.GameSync.updateState({ timer: timer - 1 }), 1000);
+            } else {
+                startNewRound(window.GameSync.currentState?.players || players);
+            }
         } else if (status === 'round_active') {
             if (currentRound?.phase === 'answering' && !resultTransitionLockRef.current) {
                 const qIdx = currentRound.questionIndex || 0;
                 const playerValues = Object.values(players || {});
                 const totalPlayers = playerValues.length;
-                // Считаем только ответы, которые являются числом 0..3 И относятся к текущему индексу вопроса
                 const answeredPlayers = playerValues.filter(
                     p => hasValidAnswer(p.currentAnswer) && (p.answeredQIndex === undefined || p.answeredQIndex === qIdx)
                 ).length;
@@ -320,8 +340,9 @@ const TVApp = ({ roomId, dbUrl }) => {
 
     // Завершение голосования за категорию
     const handleVoteFinished = () => {
+        const latestPlayers = window.GameSync.currentState?.players || gameState.players || {};
         const votes = {};
-        Object.values(gameState.players || {}).forEach(p => {
+        Object.values(latestPlayers).forEach(p => {
             if (p.currentVote) votes[p.currentVote] = (votes[p.currentVote] || 0) + 1;
         });
 
@@ -339,7 +360,7 @@ const TVApp = ({ roomId, dbUrl }) => {
             : [];
         currentQuestionsRef.current = questions;
 
-        const updatedPlayers = JSON.parse(JSON.stringify(gameState.players || {}));
+        const updatedPlayers = JSON.parse(JSON.stringify(latestPlayers));
         Object.keys(updatedPlayers).forEach(pid => {
             updatedPlayers[pid].currentAnswer = -1;
             updatedPlayers[pid].answeredQIndex = -1;
@@ -370,7 +391,8 @@ const TVApp = ({ roomId, dbUrl }) => {
         const currentQ = currentQuestionsRef.current[currentQIndex];
         const correctIndex = currentQ?.correctIndex ?? currentQ?.correct ?? 0;
 
-        Object.entries(gameState.players || {}).forEach(([pid, p]) => {
+        const latestPlayers = window.GameSync.currentState?.players || gameState.players || {};
+        Object.entries(latestPlayers).forEach(([pid, p]) => {
             const isCurrentQAnswer = p.answeredQIndex === undefined || p.answeredQIndex === currentQIndex;
             if (isCurrentQAnswer && p.currentAnswer === correctIndex) {
                 roundCorrectRef.current[pid] = (roundCorrectRef.current[pid] || 0) + 1;
@@ -389,8 +411,8 @@ const TVApp = ({ roomId, dbUrl }) => {
         nextQuestionTimeoutRef.current = setTimeout(async () => {
             const nextQIndex = currentQIndex + 1;
             if (nextQIndex < 4) {
-                const latestPlayers = window.GameSync.currentState?.players || gameState.players || {};
-                const resetAnswersPlayers = JSON.parse(JSON.stringify(latestPlayers));
+                const freshPlayers = window.GameSync.currentState?.players || gameState.players || {};
+                const resetAnswersPlayers = JSON.parse(JSON.stringify(freshPlayers));
                 Object.keys(resetAnswersPlayers).forEach(pid => {
                     resetAnswersPlayers[pid].currentAnswer = -1;
                     resetAnswersPlayers[pid].answeredQIndex = -1;
@@ -413,13 +435,13 @@ const TVApp = ({ roomId, dbUrl }) => {
         }, 4000);
     };
 
-    // Пошаговое движение фишек на количество правильных ответов
+    // Пошаговое движение фишек на количество правильных ответов + переход к 10-секундному показу мест
     const executeRoundMovement = async () => {
         setIsAnimatingRoundMoves(true);
 
         await window.GameSync.updateState({
             status: 'round_results',
-            timer: 10
+            timer: 0
         });
 
         const latestPlayers = window.GameSync.currentState?.players || gameState.players || {};
@@ -445,11 +467,12 @@ const TVApp = ({ roomId, dbUrl }) => {
 
             playersCopy[pid].position = currentPos;
             playersCopy[pid].score = (playersCopy[pid].score || 0) + steps;
+            playersCopy[pid].lastRoundSteps = steps;
             playersCopy[pid].currentAnswer = -1;
             playersCopy[pid].answeredQIndex = -1;
         }
 
-        // Запись в Firebase один раз в конце раунда
+        // Сохраняем новые позиции игроков в БД
         await window.GameSync.updateState({
             players: playersCopy
         });
@@ -458,14 +481,18 @@ const TVApp = ({ roomId, dbUrl }) => {
 
         const winner = Object.values(playersCopy).find(p => (p.position || 0) >= TOTAL_CELLS - 1);
         if (winner) {
-            window.GameSync.updateState({
+            await window.GameSync.updateState({
                 status: 'finished',
-                winnerId: winner.id
+                winnerId: winner.id,
+                players: playersCopy
             });
         } else {
-            setTimeout(() => {
-                startNewRound();
-            }, 2500);
+            // Все пропрыгали! Запускаем 10 секунд показа мест (турнирной таблицы)
+            await window.GameSync.updateState({
+                status: 'round_standings',
+                timer: 10,
+                players: playersCopy
+            });
         }
     };
 
@@ -473,13 +500,14 @@ const TVApp = ({ roomId, dbUrl }) => {
 
     const { status, timer, categoriesToVote, currentRound, players, winnerId } = gameState;
     const playersList = Object.values(players || {});
+    const standingsList = getSortedStandings(players);
     const currentQ = currentQuestionsRef.current[currentRound?.questionIndex] || null;
     const currentQCorrectIndex = currentQ ? (currentQ.correctIndex ?? currentQ.correct ?? 0) : 0;
 
     return (
         <div className="tv-container relative w-screen h-screen flex flex-col p-0 m-0 overflow-hidden">
             {/* Поле 5x5 */}
-            <div className={`board-grid w-full h-full absolute inset-0 z-0 p-4 transition-all duration-500 ${status === 'round_results' ? 'opacity-100 scale-100' : 'opacity-25 filter blur-[1px]'}`}>
+            <div className={`board-grid w-full h-full absolute inset-0 z-0 p-4 transition-all duration-500 ${(status === 'round_results' || status === 'round_standings') ? 'opacity-100 scale-100' : 'opacity-25 filter blur-[1px]'}`}>
                 {Array.from({ length: TOTAL_CELLS }).map((_, i) => {
                     const pos = getGridPos(i);
                     const isStart = i === 0;
@@ -526,6 +554,55 @@ const TVApp = ({ roomId, dbUrl }) => {
 
             {/* Контент ТВ */}
             <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6">
+                {/* 10-СЕКУНДНОЕ УВЕДОМЛЕНИЕ О ТЕКУЩИХ МЕСТАХ ИГРОКОВ */}
+                {status === 'round_standings' && (
+                    <div className="glass-card p-8 text-center max-w-2xl w-full border-4 border-yellow-400 shadow-2xl animate-fade-in">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-4xl font-black text-yellow-400">🏆 Текущие места</h2>
+                            <span className="text-3xl font-mono font-bold bg-white/20 px-5 py-1.5 rounded-xl border border-white/30">
+                                {timer} сек
+                            </span>
+                        </div>
+
+                        <div className="space-y-3 mb-4">
+                            {standingsList.map((p, idx) => {
+                                const place = idx + 1;
+                                const medal = place === 1 ? '🥇 1 место' : place === 2 ? '🥈 2 место' : place === 3 ? '🥉 3 место' : `🏅 ${place} место`;
+                                return (
+                                    <div 
+                                        key={p.id} 
+                                        className="flex items-center justify-between p-4 rounded-2xl bg-black/50 border-2"
+                                        style={{ borderColor: p.color }}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-2xl font-black text-yellow-400 min-w-[130px] text-left">
+                                                {medal}
+                                            </span>
+                                            <div className="w-12 h-12 rounded-full overflow-hidden border-2 bg-white flex items-center justify-center shrink-0" style={{ borderColor: p.color }}>
+                                                {p.selfie && p.selfie.startsWith('data:') ? (
+                                                    <img src={p.selfie} alt={p.name} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <span className="text-2xl text-black">{p.selfie || '👤'}</span>
+                                                )}
+                                            </div>
+                                            <span className="text-2xl font-bold text-white">{p.name}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-2xl font-mono font-black text-yellow-300">
+                                                Клетка {p.position || 0} / 24
+                                            </div>
+                                            <div className="text-xs text-gray-300">
+                                                За раунд: +{p.lastRoundSteps || 0} шаг.
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <p className="text-sm text-gray-300 mt-2">Следующий раунд начнется через {timer} сек...</p>
+                    </div>
+                )}
+
                 {/* ЛОББИ */}
                 {status === 'lobby' && (
                     <div className="glass-card p-8 text-center max-w-2xl w-full shadow-2xl">
@@ -561,7 +638,7 @@ const TVApp = ({ roomId, dbUrl }) => {
                         </div>
 
                         <button 
-                            onClick={startNewRound} 
+                            onClick={() => startNewRound()} 
                             disabled={playersList.length === 0} 
                             className={`primary-btn px-10 py-4 text-2xl w-full ${playersList.length === 0 ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
                         >
@@ -631,7 +708,7 @@ const TVApp = ({ roomId, dbUrl }) => {
 
                                 return (
                                     <div 
-                                        key={i} 
+                                        key={`${currentRound.questionIndex}_${i}`} 
                                         className={`quiz-btn ${letterClass} ${isCorrect ? 'quiz-btn-correct' : ''} ${isWrong ? 'opacity-40' : ''} relative !cursor-default`} 
                                         style={{ justifyContent: 'center' }}
                                     >
@@ -707,7 +784,6 @@ const MobileApp = ({ roomId, dbUrl }) => {
 
     useEffect(() => {
         if (playerId) {
-            // Синхронизируем оба ключа в Storage, чтобы sync.js гарантированно находил playerId
             localStorage.setItem('party_quiz_player_id', playerId);
             localStorage.setItem('playerId', playerId);
             sessionStorage.setItem('playerId', playerId);
@@ -729,6 +805,13 @@ const MobileApp = ({ roomId, dbUrl }) => {
             console.error("Player sync init error", err);
         }
     }, [roomId, dbUrl, playerId]);
+
+    // Снимаем фокус с активной кнопки при смене вопроса, чтобы браузер не оставлял светлую :focus/:hover подсветку!
+    useEffect(() => {
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+        }
+    }, [gameState?.currentRound?.questionIndex, gameState?.status]);
 
     const usedColors = useMemo(() => {
         if (!gameState?.players) return [];
@@ -777,17 +860,18 @@ const MobileApp = ({ roomId, dbUrl }) => {
     const currentQIndex = gameState?.currentRound?.questionIndex ?? 0;
     const currentQKey = `${gameState?.currentRound?.categoryId || 'round'}_${currentQIndex}`;
 
-    const sendVote = (catId) => {
+    const sendVote = (catId, e) => {
+        if (e && e.currentTarget) e.currentTarget.blur();
         if (!gameState?.players?.[playerId] || gameState.players[playerId].currentVote) return;
         window.GameSync.patchPlayer(roomId, playerId, { currentVote: catId });
     };
 
-    const sendAnswer = (optionIndex) => {
+    const sendAnswer = (optionIndex, e) => {
+        if (e && e.currentTarget) e.currentTarget.blur();
         if (gameState?.currentRound?.phase !== 'answering') return;
         if (localAnswerState.qKey === currentQKey && localAnswerState.index !== null) return;
 
         setLocalAnswerState({ qKey: currentQKey, index: optionIndex });
-        // Пишем напрямую через patchPlayer с номером текущего вопроса, чтобы не зависеть от ключей в sendAction
         window.GameSync.patchPlayer(roomId, playerId, {
             currentAnswer: optionIndex,
             answeredQIndex: currentQIndex
@@ -867,8 +951,10 @@ const MobileApp = ({ roomId, dbUrl }) => {
         );
     }
 
-    const { status, timer, categoriesToVote, currentRound } = gameState;
+    const { status, timer, categoriesToVote, currentRound, players } = gameState;
     const myPlayer = gameState.players[playerId];
+    const standingsList = getSortedStandings(players);
+    const myRank = standingsList.findIndex(p => p.id === playerId) + 1;
 
     // Ответ считается выбранным только если он сделан в ТЕКУЩЕМ вопросе
     const remoteHasValidAnswer = hasValidAnswer(myPlayer.currentAnswer) && myPlayer.answeredQIndex === currentQIndex;
@@ -889,7 +975,10 @@ const MobileApp = ({ roomId, dbUrl }) => {
                              <span className="text-xl text-black">{myPlayer.selfie || '👤'}</span>
                          )}
                     </div>
-                    <span className="font-bold text-lg">{myPlayer.name}</span>
+                    <div>
+                        <div className="font-bold text-lg leading-tight">{myPlayer.name}</div>
+                        <div className="text-xs text-yellow-400 font-bold">{myRank > 0 ? `${myRank} место` : ''}</div>
+                    </div>
                 </div>
                 <div className="text-right">
                     <div className="text-[10px] text-gray-300 uppercase tracking-wider">Клетка</div>
@@ -916,9 +1005,9 @@ const MobileApp = ({ roomId, dbUrl }) => {
                         {(categoriesToVote || []).map(cat => (
                             <button 
                                 key={cat.id} 
-                                onClick={() => sendVote(cat.id)} 
+                                onClick={(e) => sendVote(cat.id, e)} 
                                 disabled={!!myPlayer.currentVote} 
-                                className={`glass-card flex items-center gap-4 text-xl font-bold w-full p-5 transition-all active:scale-95 ${myPlayer.currentVote === cat.id ? 'border-[#8B9A46] shadow-[0_0_20px_rgba(139,154,70,0.8)] scale-102 bg-[#8B9A46]/30' : ''} ${myPlayer.currentVote && myPlayer.currentVote !== cat.id ? 'opacity-40 grayscale' : 'hover:bg-white/10'}`}
+                                className={`glass-card flex items-center gap-4 text-xl font-bold w-full p-5 transition-all active:scale-95 ${myPlayer.currentVote === cat.id ? 'border-[#8B9A46] shadow-[0_0_20px_rgba(139,154,70,0.8)] scale-102 bg-[#8B9A46]/30' : ''} ${myPlayer.currentVote && myPlayer.currentVote !== cat.id ? 'opacity-40 grayscale' : ''}`}
                             >
                                 <span className="text-4xl">{cat.icon}</span>
                                 <span>{cat.name}</span>
@@ -927,7 +1016,7 @@ const MobileApp = ({ roomId, dbUrl }) => {
                     </div>
                 )}
 
-                {/* ВОПРОСЫ */}
+                {/* ВОПРОСЫ: уникальный key={currentQKey + '_' + i} полностью пересоздает DOM-кнопку при новом вопросе! */}
                 {status === 'round_active' && (
                     <div className="flex flex-col h-full justify-between pb-4">
                         <div className="text-center mb-2">
@@ -939,24 +1028,28 @@ const MobileApp = ({ roomId, dbUrl }) => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-3.5 flex-1 justify-center my-auto">
+                        <div key={currentQKey} className="grid grid-cols-1 gap-3.5 flex-1 justify-center my-auto">
                             {['A', 'B', 'C', 'D'].map((lbl, i) => {
-                                const isSelected = chosenIndex === i;
+                                const isSelected = !isShowingResult && chosenIndex === i;
 
-                                let btnClass = `quiz-btn quiz-btn-${lbl.toLowerCase()} active:scale-95 transition-all py-4`;
+                                let btnClass = `quiz-btn quiz-btn-${lbl.toLowerCase()} active:scale-95 transition-all py-4 outline-none focus:outline-none`;
                                 if (isSelected) {
                                     btnClass += ' quiz-btn-selected';
                                 } else if (isAnswerChosen || isShowingResult) {
                                     btnClass += ' opacity-40';
                                 }
 
+                                // Явно задаем чистый базовый фон для невыбранных кнопок, чтобы мобильный браузер не держал светлый :hover/:focus со старого вопроса
+                                const inlineResetStyle = !isSelected ? { backgroundColor: 'var(--btn-quiz-bg, #1e281b)' } : {};
+
                                 return (
                                     <button 
-                                        key={i} 
+                                        key={`${currentQKey}_btn_${i}`} 
                                         type="button"
-                                        onClick={() => sendAnswer(i)} 
+                                        onClick={(e) => sendAnswer(i, e)} 
                                         disabled={isAnswerChosen || isShowingResult} 
                                         className={btnClass}
+                                        style={inlineResetStyle}
                                     >
                                         <div className="quiz-btn-letter font-black">{lbl}</div>
                                         <div className="quiz-btn-text text-xl font-bold">
@@ -967,7 +1060,7 @@ const MobileApp = ({ roomId, dbUrl }) => {
                             })}
                         </div>
 
-                        {isAnswerChosen && (
+                        {isAnswerChosen && !isShowingResult && (
                             <div className="text-center text-sm font-semibold text-yellow-300 mt-2 animate-pulse">
                                 Ответ принят! Смотрите на экран ТВ...
                             </div>
@@ -979,8 +1072,31 @@ const MobileApp = ({ roomId, dbUrl }) => {
                 {status === 'round_results' && (
                     <div className="text-center glass-card p-8 border-2 border-yellow-400">
                         <div className="text-6xl mb-4 animate-bounce">🏃‍♂️</div>
-                        <h2 className="text-2xl font-black mb-2 text-yellow-400">Идет подсчет шагов!</h2>
-                        <p className="text-lg text-gray-200">Смотрите на экран ТВ: ваши фигурки шагают по игровому полю!</p>
+                        <h2 className="text-2xl font-black mb-2 text-yellow-400">Фигурки шагают!</h2>
+                        <p className="text-lg text-gray-200">Смотрите на экран ТВ: перемещение по игровому полю.</p>
+                    </div>
+                )}
+
+                {/* 10 СЕКУНД ПОКАЗА ТЕКУЩИХ МЕСТ НА ТЕЛЕФОНЕ */}
+                {status === 'round_standings' && (
+                    <div className="glass-card p-5 border-2 border-yellow-400 space-y-3">
+                        <div className="flex justify-between items-center border-b border-white/20 pb-2">
+                            <h2 className="text-xl font-black text-yellow-400">🏆 Таблица мест</h2>
+                            <span className="font-mono font-bold text-lg text-white">{timer} с</span>
+                        </div>
+                        <div className="text-center py-2 bg-yellow-400/20 rounded-xl border border-yellow-400/50">
+                            <div className="text-xs uppercase text-gray-200">Ваше место сейчас</div>
+                            <div className="text-3xl font-black text-yellow-300">{myRank} место</div>
+                            <div className="text-xs text-gray-300">Клетка {myPlayer.position || 0} из 24</div>
+                        </div>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                            {standingsList.map((p, idx) => (
+                                <div key={p.id} className={`flex justify-between items-center px-3 py-2 rounded-lg text-sm ${p.id === playerId ? 'bg-white/20 font-bold' : 'bg-black/40'}`}>
+                                    <span>#{idx + 1} {p.name}</span>
+                                    <span className="font-mono text-yellow-400">Клетка {p.position || 0}</span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
 
