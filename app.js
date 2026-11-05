@@ -16,6 +16,34 @@ const getGridPos = (index) => {
     return { row: row + 1, col: col + 1 };
 };
 
+// Расчет смещения фишек, если несколько игроков стоят на одной клетке
+const getPawnOffset = (indexOnCell, totalOnCell) => {
+    if (totalOnCell <= 1) return { x: 0, y: 0, scale: 1 };
+    if (totalOnCell === 2) {
+        return {
+            x: indexOnCell === 0 ? -18 : 18,
+            y: 0,
+            scale: 0.82
+        };
+    }
+    if (totalOnCell === 3) {
+        const offsets = [
+            { x: -16, y: -12 },
+            { x: 16, y: -12 },
+            { x: 0, y: 16 }
+        ];
+        return { ...offsets[indexOnCell], scale: 0.72 };
+    }
+    // 4 и более игроков
+    const offsets = [
+        { x: -16, y: -14 },
+        { x: 16, y: -14 },
+        { x: -16, y: 14 },
+        { x: 16, y: 14 }
+    ];
+    return { ...(offsets[indexOnCell % 4]), scale: 0.68 };
+};
+
 const EMOJI_AVATARS = ['😎', '🤪', '🤡', '👽', '🤖', '😺', '🤠', '🦊'];
 const PLAYER_COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FFCC00', '#AF52DE', '#FF9500'];
 
@@ -33,34 +61,9 @@ const getSortedStandings = (playersObj) => {
     });
 };
 
-// Смещение фишек, если на одной клетке несколько игроков
-const getPawnOffset = (indexInCell, totalInCell) => {
-    if (totalInCell <= 1) return { x: 0, y: 0, scale: 1 };
-    if (totalInCell === 2) {
-        return { x: indexInCell === 0 ? -22 : 22, y: 0, scale: 0.9 };
-    }
-    if (totalInCell === 3) {
-        const offsets = [
-            { x: -22, y: -12 },
-            { x: 22, y: -12 },
-            { x: 0, y: 16 }
-        ];
-        return { ...(offsets[indexInCell] || { x: 0, y: 0 }), scale: 0.85 };
-    }
-    const offsets = [
-        { x: -22, y: -16 },
-        { x: 22, y: -16 },
-        { x: -22, y: 16 },
-        { x: 22, y: 16 },
-        { x: 0, y: -22 },
-        { x: 0, y: 22 }
-    ];
-    return { ...(offsets[indexInCell % offsets.length] || { x: 0, y: 0 }), scale: 0.8 };
-};
-
-const Pawn = ({ color, selfie, isWalking, position, offsetIndex = 0, totalOnCell = 1 }) => {
+const Pawn = ({ color, selfie, isWalking, position, cellIndexOrder = 0, cellOccupantsCount = 1 }) => {
     const pos = getGridPos(position || 0);
-    const { x, y, scale } = getPawnOffset(offsetIndex, totalOnCell);
+    const offset = getPawnOffset(cellIndexOrder, cellOccupantsCount);
 
     return (
         <div 
@@ -68,9 +71,8 @@ const Pawn = ({ color, selfie, isWalking, position, offsetIndex = 0, totalOnCell
             style={{ 
                 gridRow: pos.row, 
                 gridColumn: pos.col,
-                '--player-color': color,
-                transform: `translate(${x}px, ${y}px) scale(${scale})`,
-                zIndex: 20 + offsetIndex
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${offset.scale})`,
+                '--player-color': color
             }}
         >
             <div className="pawn-selfie-head" style={{ '--player-color': color, borderColor: color }}>
@@ -87,62 +89,75 @@ const Pawn = ({ color, selfie, isWalking, position, offsetIndex = 0, totalOnCell
 
 const CameraModal = ({ isOpen, onClose, onSave }) => {
     const videoRef = useRef(null);
-    const onCloseRef = useRef(onClose);
     const [photo, setPhoto] = useState(null);
     const [isVideoReady, setIsVideoReady] = useState(false);
 
     useEffect(() => {
-        onCloseRef.current = onClose;
-    }, [onClose]);
-
-    useEffect(() => {
         let stream = null;
         let isCancelled = false;
+        setIsVideoReady(false);
 
         if (isOpen && !photo) {
-            setIsVideoReady(false);
             navigator.mediaDevices?.getUserMedia({ 
-                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } } 
+                video: { 
+                    facingMode: 'user', 
+                    width: { ideal: 640 }, 
+                    height: { ideal: 640 },
+                    frameRate: { ideal: 30 }
+                } 
             }).then(s => {
                 if (isCancelled) {
-                    s.getTracks().forEach(track => track.stop());
+                    s.getTracks().forEach(t => t.stop());
                     return;
                 }
                 stream = s;
                 if (videoRef.current) {
                     videoRef.current.srcObject = s;
+                    videoRef.current.onloadedmetadata = () => {
+                        videoRef.current.play().then(() => {
+                            setIsVideoReady(true);
+                        }).catch(e => console.warn("Autoplay err:", e));
+                    };
                 }
             }).catch(err => {
                 console.error("Camera access error:", err);
                 alert("Ошибка доступа к камере. Пожалуйста, выберите эмодзи.");
-                if (onCloseRef.current) onCloseRef.current();
+                onClose();
             });
         }
-
         return () => {
             isCancelled = true;
             if (stream) stream.getTracks().forEach(track => track.stop());
         };
-    }, [isOpen, photo]);
+    }, [isOpen, photo, onClose]);
 
     if (!isOpen) return null;
 
     const handleTake = async () => {
-        const videoEl = videoRef.current;
-        if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) {
-            return; // Ждем полной инициализации кадра, чтобы избежать черного фото
-        }
         try {
+            const video = videoRef.current;
+            if (!video) return;
+
+            // Защита от съемки до полной отрисовки видеокадра
+            if (!isVideoReady || video.videoWidth === 0 || video.readyState < 2) {
+                await new Promise(r => setTimeout(r, 200));
+            }
+
+            if (video.videoWidth === 0) {
+                alert("Камера инициализируется, попробуйте еще раз через секунду.");
+                return;
+            }
+
             if (window.captureSelfie) {
-                const base64 = await window.captureSelfie(videoEl);
+                const base64 = await window.captureSelfie(video);
                 setPhoto(base64);
             } else {
                 const canvas = document.createElement('canvas');
-                canvas.width = 120;
-                canvas.height = 120;
+                canvas.width = 160;
+                canvas.height = 160;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(videoEl, 0, 0, 120, 120);
-                setPhoto(canvas.toDataURL('image/jpeg', 0.65));
+                ctx.drawImage(video, 0, 0, 160, 160);
+                setPhoto(canvas.toDataURL('image/jpeg', 0.75));
             }
         } catch (e) {
             console.error(e);
@@ -150,23 +165,28 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
         }
     };
 
-    const handleRetake = () => setPhoto(null);
-    const handleSave = () => { onSave(photo); onClose(); };
+    const handleRetake = () => {
+        setIsVideoReady(false);
+        setPhoto(null);
+    };
+    
+    const handleSave = () => { 
+        if (photo) onSave(photo); 
+        onClose(); 
+    };
 
     return (
         <div className="camera-modal fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
             <div className="glass-card p-5 flex flex-col items-center max-w-sm w-full relative">
-                <button onClick={onClose} className="absolute top-3 right-4 text-white text-3xl font-bold">&times;</button>
+                <button onClick={onClose} className="absolute top-3 right-3 text-white text-3xl font-bold leading-none">&times;</button>
                 <h3 className="text-xl font-bold mb-4 text-white">Сделайте селфи</h3>
-                <div className="camera-video-preview w-60 h-60 bg-black rounded-3xl overflow-hidden mb-5 border-4 border-yellow-400 relative flex items-center justify-center">
+                <div className="camera-video-preview w-56 h-56 bg-black rounded-3xl overflow-hidden mb-5 border-4 border-yellow-400 relative flex items-center justify-center">
                     {!photo && (
                         <video 
                             ref={videoRef} 
                             autoPlay 
                             playsInline 
                             muted 
-                            onLoadedData={() => setIsVideoReady(true)}
-                            onCanPlay={() => setIsVideoReady(true)}
                             className="w-full h-full object-cover" 
                         />
                     )}
@@ -174,13 +194,7 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
                 </div>
                 <div className="camera-controls flex gap-3 w-full">
                     {!photo ? (
-                        <button 
-                            onClick={handleTake} 
-                            disabled={!isVideoReady}
-                            className={`primary-btn w-full ${!isVideoReady ? 'opacity-50 cursor-wait' : ''}`}
-                        >
-                            {isVideoReady ? '📸 Сфотографировать' : 'Запуск камеры...'}
-                        </button>
+                        <button onClick={handleTake} className="primary-btn w-full">📸 Сфотографировать</button>
                     ) : (
                         <>
                             <button onClick={handleRetake} className="primary-btn w-1/2 !bg-gray-500 hover:!bg-gray-600">Переснять</button>
@@ -268,7 +282,7 @@ const TVApp = ({ roomId, dbUrl }) => {
                 playerAnswers: {},
                 currentRound: 0,
                 currentQuestionIndex: 0,
-                currentQuestions: [],
+                currentQuestion: null,
                 players: {}
             });
         } catch (err) {
@@ -306,7 +320,6 @@ const TVApp = ({ roomId, dbUrl }) => {
         }
     }, [gameState?.phase, joinUrl]);
 
-    // Таймер по абсолютному timestamp без зависаний
     useEffect(() => {
         let timerInterval = null;
         const syncTime = () => {
@@ -345,7 +358,7 @@ const TVApp = ({ roomId, dbUrl }) => {
             categoryVotes: {},
             playerAnswers: {},
             currentQuestionIndex: 0,
-            currentQuestions: []
+            currentQuestion: null
         });
     };
 
@@ -371,6 +384,7 @@ const TVApp = ({ roomId, dbUrl }) => {
             : (window.QuestionBank?.getQuestionsByCategory ? window.QuestionBank.getQuestionsByCategory(chosenCat, 4) : []);
         
         currentQuestionsRef.current = questions;
+        const firstQ = questions[0] || null;
 
         window.GameSync.updateState({
             phase: 'question',
@@ -379,13 +393,16 @@ const TVApp = ({ roomId, dbUrl }) => {
             categoryVotes: {},
             playerAnswers: {},
             currentQuestionIndex: 0,
-            currentQuestions: questions
+            currentQuestion: firstQ ? {
+                text: firstQ.text || firstQ.q,
+                options: firstQ.options || []
+            } : null
         });
     }, [gameState]);
 
     const executeRoundMovement = async () => {
         setIsAnimatingRoundMoves(true);
-        await window.GameSync.updateState({ phase: 'board_move', timerEndTime: 0 });
+        await window.GameSync.updateState({ phase: 'board_move', timerEndTime: 0, currentQuestion: null });
 
         const playersCopy = JSON.parse(JSON.stringify(gameState?.players || {}));
         for (const pid of Object.keys(playersCopy)) {
@@ -420,8 +437,7 @@ const TVApp = ({ roomId, dbUrl }) => {
     const handleShowResultPhase = useCallback(() => {
         if (!gameState) return;
         const currentQIndex = gameState.currentQuestionIndex || 0;
-        const questionsList = currentQuestionsRef.current.length ? currentQuestionsRef.current : (gameState.currentQuestions || []);
-        const currentQ = questionsList[currentQIndex];
+        const currentQ = currentQuestionsRef.current[currentQIndex];
         const correctIndex = currentQ?.correctIndex ?? currentQ?.correct ?? 0;
 
         Object.entries(gameState.playerAnswers || {}).forEach(([pid, ans]) => {
@@ -439,11 +455,16 @@ const TVApp = ({ roomId, dbUrl }) => {
         nextPhaseTimeoutRef.current = setTimeout(() => {
             const nextQIndex = currentQIndex + 1;
             if (nextQIndex < 4) {
+                const nextQ = currentQuestionsRef.current[nextQIndex] || null;
                 window.GameSync.updateState({
                     phase: 'question',
                     timerEndTime: Date.now() + 15000,
                     currentQuestionIndex: nextQIndex,
-                    playerAnswers: {}
+                    playerAnswers: {},
+                    currentQuestion: nextQ ? {
+                        text: nextQ.text || nextQ.q,
+                        options: nextQ.options || []
+                    } : null
                 });
             } else {
                 executeRoundMovement();
@@ -475,16 +496,15 @@ const TVApp = ({ roomId, dbUrl }) => {
 
     const { phase, categoriesToVote, currentQuestionIndex, players, winnerId, categoryVotes, playerAnswers } = gameState;
     const playersList = Object.values(players || {});
-    const questionsList = currentQuestionsRef.current.length ? currentQuestionsRef.current : (gameState.currentQuestions || []);
-    const currentQ = questionsList[currentQuestionIndex] || null;
+    const currentQ = currentQuestionsRef.current[currentQuestionIndex] || null;
     const currentQCorrectIndex = currentQ ? (currentQ.correctIndex ?? currentQ.correct ?? 0) : 0;
 
-    // Группировка игроков по клеткам для предотвращения наложения
-    const cellOccupantsMap = {};
+    // Группировка игроков по клеткам для расчета смещения
+    const cellGroups = {};
     playersList.forEach(p => {
-        const cellPos = visualPositions[p.id] ?? p.position ?? 0;
-        if (!cellOccupantsMap[cellPos]) cellOccupantsMap[cellPos] = [];
-        cellOccupantsMap[cellPos].push(p.id);
+        const cell = visualPositions[p.id] ?? p.position ?? 0;
+        if (!cellGroups[cell]) cellGroups[cell] = [];
+        cellGroups[cell].push(p.id);
     });
 
     return (
@@ -509,19 +529,19 @@ const TVApp = ({ roomId, dbUrl }) => {
                 })}
 
                 {playersList.map(p => {
-                    const cellPos = visualPositions[p.id] ?? p.position ?? 0;
-                    const occupants = cellOccupantsMap[cellPos] || [p.id];
-                    const offsetIndex = occupants.indexOf(p.id);
+                    const cell = visualPositions[p.id] ?? p.position ?? 0;
+                    const occupants = cellGroups[cell] || [p.id];
+                    const orderIndex = occupants.indexOf(p.id);
 
                     return (
                         <Pawn 
                             key={p.id} 
                             color={p.color} 
                             selfie={p.selfie} 
-                            position={cellPos} 
+                            position={cell} 
                             isWalking={walkingPlayerId === p.id}
-                            offsetIndex={offsetIndex >= 0 ? offsetIndex : 0}
-                            totalOnCell={occupants.length}
+                            cellIndexOrder={orderIndex >= 0 ? orderIndex : 0}
+                            cellOccupantsCount={occupants.length}
                         />
                     );
                 })}
@@ -661,10 +681,6 @@ const MobileApp = ({ roomId, dbUrl }) => {
     const [showCameraModal, setShowCameraModal] = useState(false);
     const [timeLeft, setTimeLeft] = useState(0);
 
-    const handleCloseCamera = useCallback(() => {
-        setShowCameraModal(false);
-    }, []);
-
     useEffect(() => {
         try {
             window.GameSync.onStateChange((newState) => {
@@ -760,51 +776,64 @@ const MobileApp = ({ roomId, dbUrl }) => {
 
     if (!isJoined || !gameState?.players?.[playerId]) {
         return (
-            <div className="mobile-container !py-2 !px-3 overflow-y-auto flex items-center justify-center">
-                <CameraModal isOpen={showCameraModal} onClose={handleCloseCamera} onSave={setSelfie} />
-                <div className="glass-card w-full max-w-sm !p-4 space-y-2.5 my-auto max-h-[94dvh] overflow-y-auto">
-                    <h2 className="text-2xl font-black text-center text-yellow-300 leading-tight">Вход в игру</h2>
+            <div className="mobile-container flex items-center justify-center p-3">
+                <CameraModal isOpen={showCameraModal} onClose={() => setShowCameraModal(false)} onSave={setSelfie} />
+                <div className="glass-card w-full max-w-xs p-4 flex flex-col gap-2.5 max-h-[94vh] overflow-y-auto">
+                    <h2 className="text-2xl font-black text-center text-yellow-300">Вход в игру</h2>
+                    
                     <div className="flex flex-col items-center gap-2">
-                        <div className="camera-preview-container relative w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-black border-3 border-black shrink-0" style={{ backgroundColor: color || '#fde047' }}>
-                            {!selfie && <div className="absolute inset-0 flex items-center justify-center text-2xl">👤</div>}
+                        <div 
+                            className="camera-preview-container relative w-20 h-20 rounded-full overflow-hidden flex items-center justify-center bg-black border-4 border-black shrink-0" 
+                            style={{ backgroundColor: color || '#fde047' }}
+                        >
+                            {!selfie && <div className="absolute inset-0 flex items-center justify-center text-3xl">👤</div>}
                             {isSafeImageSrc(selfie) && <img src={selfie} className="w-full h-full object-cover" />}
-                            {selfie && !isSafeImageSrc(selfie) && <div className="w-full h-full bg-white flex items-center justify-center text-3xl text-black">{selfie}</div>}
+                            {selfie && !isSafeImageSrc(selfie) && <div className="w-full h-full bg-white flex items-center justify-center text-4xl text-black">{selfie}</div>}
                         </div>
                         <button onClick={() => setShowCameraModal(true)} className="primary-btn w-full !py-2 text-sm">📸 Сделать селфи</button>
+                        
                         <div className="flex gap-1.5 flex-wrap justify-center">
                             {EMOJI_AVATARS.map(em => (
                                 <button key={em} onClick={() => setSelfie(em)} className={`text-xl p-1 rounded-lg border-2 border-black ${selfie === em ? 'bg-yellow-400' : 'bg-white/20'}`}>{em}</button>
                             ))}
                         </div>
                     </div>
+
                     <input 
                         type="text" 
                         value={name} 
                         onChange={e => setName(e.target.value)} 
                         placeholder="Ваше имя" 
-                        maxLength="12"
-                        className="!py-2 !px-3 !text-base"
+                        maxLength="12" 
+                        className="w-full p-2.5 rounded-xl bg-white border-2 border-black text-black font-bold outline-none text-center"
                     />
-                    <div className="flex justify-center gap-2 flex-wrap pt-0.5">
+
+                    <div className="flex justify-center gap-2 flex-wrap py-1">
                         {PLAYER_COLORS.map(c => {
                             const isTaken = usedColors.includes(c);
                             return (
-                                <button key={c} onClick={() => !isTaken && setColor(c)} disabled={isTaken} className={`w-8 h-8 rounded-full border-3 ${color === c ? 'scale-110 border-white shadow-lg' : 'border-black'} ${isTaken ? 'opacity-30' : ''}`} style={{ backgroundColor: c }}></button>
+                                <button 
+                                    key={c} 
+                                    onClick={() => !isTaken && setColor(c)} 
+                                    disabled={isTaken} 
+                                    className={`w-8 h-8 rounded-full border-2 ${color === c ? 'scale-110 border-white shadow-md ring-2 ring-black' : 'border-black'} ${isTaken ? 'opacity-30' : ''}`} 
+                                    style={{ backgroundColor: c }}
+                                />
                             );
                         })}
                     </div>
-                    <button onClick={handleJoin} className="primary-btn w-full !mt-2 text-lg !py-2.5">Войти в игру</button>
+
+                    <button onClick={handleJoin} className="primary-btn w-full mt-1 text-lg py-2.5">Войти в игру</button>
                 </div>
             </div>
         );
     }
 
-    const { phase, categoriesToVote, currentQuestionIndex, currentQuestions, players, categoryVotes, playerAnswers } = gameState;
+    const { phase, categoriesToVote, currentQuestionIndex, currentQuestion, players, categoryVotes, playerAnswers } = gameState;
     const myPlayer = players[playerId];
     const myRank = getSortedStandings(players).findIndex(p => p.id === playerId) + 1;
     const hasVoted = Boolean(categoryVotes?.[playerId]);
     const hasAnswered = playerAnswers?.[playerId] !== undefined;
-    const currentQ = (currentQuestions || [])[currentQuestionIndex] || null;
 
     return (
         <div className="mobile-container select-none">
@@ -820,7 +849,7 @@ const MobileApp = ({ roomId, dbUrl }) => {
                 </div>
             </div>
 
-            <div className="flex-1 flex flex-col justify-center overflow-hidden">
+            <div className="flex-1 flex flex-col justify-center">
                 {phase === 'lobby' && (
                     <div className="text-center glass-card p-8">
                         <h2 className="text-2xl font-black mb-2">Вы в игре!</h2>
@@ -845,16 +874,23 @@ const MobileApp = ({ roomId, dbUrl }) => {
                             <div className="text-sm text-yellow-300 font-black uppercase">Вопрос {currentQuestionIndex + 1} из 4</div>
                             <div className="text-3xl font-mono font-black">{timeLeft}</div>
                         </div>
-                        <div className="grid grid-cols-1 gap-2.5 flex-1 justify-center my-auto">
+                        <div className="grid grid-cols-1 gap-3 flex-1 justify-center my-auto">
                             {['A', 'B', 'C', 'D'].map((lbl, i) => {
                                 const isSelected = playerAnswers?.[playerId] === i;
-                                const optionText = currentQ?.options?.[i] || `Вариант ${lbl}`;
+                                const optionText = currentQuestion?.options?.[i] || `Вариант ${lbl}`;
+
                                 return (
-                                    <button key={i} onClick={() => sendAnswer(i)} disabled={hasAnswered} className={`quiz-btn quiz-btn-${lbl.toLowerCase()} py-3 px-3 ${isSelected ? 'quiz-btn-selected' : ''} ${hasAnswered && !isSelected ? 'opacity-40' : ''}`}>
-                                        <div className="quiz-btn-letter font-black shrink-0">{lbl}</div>
-                                        <div className="quiz-btn-text text-base sm:text-lg font-black leading-snug text-left break-words flex-1">
-                                            {optionText} {isSelected ? '✓' : ''}
+                                    <button 
+                                        key={i} 
+                                        onClick={() => sendAnswer(i)} 
+                                        disabled={hasAnswered} 
+                                        className={`quiz-btn quiz-btn-${lbl.toLowerCase()} py-3 px-4 ${isSelected ? 'quiz-btn-selected' : ''} ${hasAnswered && !isSelected ? 'opacity-40' : ''} flex items-center gap-3 text-left`}
+                                    >
+                                        <div className="quiz-btn-letter font-black text-xl shrink-0">{lbl}</div>
+                                        <div className="quiz-btn-text text-base md:text-lg font-bold leading-tight flex-1">
+                                            {optionText}
                                         </div>
+                                        {isSelected && <span className="text-lg font-black ml-auto">✓</span>}
                                     </button>
                                 );
                             })}
@@ -892,7 +928,7 @@ const App = () => {
     const params = new URLSearchParams(window.location.search);
     const role = params.get('role');
     const room = params.get('room');
-    const db = params.get('db') ? decodeURIComponent(window.location.search.split('db=')[1]?.split('&')[0] || '') : '';
+    const db = params.get('db') ? decodeURIComponent(params.get('db')) : '';
 
     if (role === 'host' && room) return <TVApp roomId={room} dbUrl={db} />;
     if (role === 'player' && room) return <MobileApp roomId={room} dbUrl={db} />;
