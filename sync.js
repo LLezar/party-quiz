@@ -1,172 +1,238 @@
 // filename: sync.js
-// Firebase Realtime Database Client (REST API + Server-Sent Events)
+window.GameSync = (function() {
+    let stateChangeCallback = null;
+    let currentRoomCode = null;
+    let databaseUrl = null;
+    let currentRole = null;
+    let bc = null; // BroadcastChannel
+    let firebaseInterval = null;
 
-window.GameSync = {
-  dbUrl: '',
-  roomId: '',
-  role: 'host', // 'host' или 'player'
-  eventSource: null,
-  currentState: null,
-  subscribers: [],
-
-  init: function (role, roomId, dbUrl) {
-    this.role = role;
-    this.roomId = roomId;
-    
-    // Очистка и валидация URL базы данных Firebase
-    let cleanUrl = (dbUrl || '').trim();
-    if (!cleanUrl) {
-      cleanUrl = 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app';
-    }
-    cleanUrl = cleanUrl.replace(/\/+$/, '');
-    this.dbUrl = cleanUrl;
-
-    console.log(`[Sync] Init role=${role}, room=${roomId}, db=${cleanUrl}`);
-
-    this.connectSSE();
-  },
-
-  onStateChange: function (callback) {
-    if (typeof callback === 'function') {
-      this.subscribers.push(callback);
-      if (this.currentState) {
-        callback(this.currentState);
-      }
-    }
-  },
-
-  notify: function (newState) {
-    this.currentState = newState;
-    this.subscribers.forEach((cb) => {
-      try {
-        cb(newState);
-      } catch (err) {
-        console.error('[Sync] Notification error:', err);
-      }
-    });
-  },
-
-  connectSSE: function () {
-    if (this.eventSource) {
-      this.eventSource.close();
-    }
-
-    const sseUrl = `${this.dbUrl}/rooms/${this.roomId}.json`;
-    console.log('[Sync] Connecting SSE to', sseUrl);
-
-    try {
-      this.eventSource = new EventSource(sseUrl);
-
-      this.eventSource.addEventListener('put', (e) => {
+    function safeParse(str) {
         try {
-          const parsed = JSON.parse(e.data);
-          if (parsed && parsed.path === '/') {
-            this.notify(parsed.data || {});
-          } else if (parsed && parsed.path) {
-            // Частичный апдейт ключа
-            const key = parsed.path.replace(/^\//, '');
-            const updated = Object.assign({}, this.currentState || {});
-            if (key) {
-              const parts = key.split('/');
-              let ref = updated;
-              for (let i = 0; i < parts.length - 1; i++) {
-                if (!ref[parts[i]]) ref[parts[i]] = {};
-                ref = ref[parts[i]];
-              }
-              ref[parts[parts.length - 1]] = parsed.data;
-              this.notify(updated);
+            return JSON.parse(str);
+        } catch (e) {
+            console.error("GameSync JSON Parse Error:", e);
+            return null;
+        }
+    }
+
+    function sanitizeDbUrl(url) {
+        if (!url || typeof url !== 'string') return null;
+        const trimmed = url.trim().replace(/\/+$/, '');
+        if (!trimmed.startsWith('https://')) return null;
+        if (!trimmed.includes('firebaseio.com') && !trimmed.includes('firebasedatabase.app')) return null;
+        return trimmed;
+    }
+
+    let localState = {
+        phase: 'lobby',
+        players: {},
+        categoryVotes: {},
+        playerAnswers: {},
+        currentRound: 0,
+        currentQuestionIndex: 0,
+        timerEndTime: 0
+    };
+
+    function triggerCallback() {
+        if (stateChangeCallback) {
+            stateChangeCallback(JSON.parse(JSON.stringify(localState)));
+        }
+    }
+
+    function isObject(item) {
+        return (item && typeof item === 'object' && !Array.isArray(item));
+    }
+
+    function mergeDeep(target, ...sources) {
+        if (!sources.length) return target;
+        const source = sources.shift();
+
+        if (isObject(target) && isObject(source)) {
+            for (const key in source) {
+                if (isObject(source[key])) {
+                    if (!target[key]) target[key] = {};
+                    mergeDeep(target[key], source[key]);
+                } else {
+                    target[key] = source[key];
+                }
             }
-          }
-        } catch (err) {
-          console.error('[Sync] SSE Parse Put Error:', err);
         }
-      });
+        return mergeDeep(target, ...sources);
+    }
 
-      this.eventSource.addEventListener('patch', (e) => {
-        try {
-          const parsed = JSON.parse(e.data);
-          if (parsed && parsed.data) {
-            const updated = Object.assign({}, this.currentState || {}, parsed.data);
-            this.notify(updated);
-          }
-        } catch (err) {
-          console.error('[Sync] SSE Parse Patch Error:', err);
+    function mergeState(partialState) {
+        if (!partialState || typeof partialState !== 'object') return;
+        mergeDeep(localState, partialState);
+    }
+
+    function initBroadcastChannel(roomCode) {
+        if (window.BroadcastChannel) {
+            if (bc) {
+                try { bc.close(); } catch (e) {}
+            }
+            bc = new BroadcastChannel('tv_game_sync_' + roomCode);
+            bc.onmessage = (event) => {
+                const incoming = typeof event.data === 'string' ? safeParse(event.data) : event.data;
+                if (incoming) {
+                    mergeState(incoming);
+                    triggerCallback();
+                }
+            };
         }
-      });
-
-      this.eventSource.onerror = (err) => {
-        console.warn('[Sync] EventSource error, polling fallback active', err);
-      };
-    } catch (e) {
-      console.error('[Sync] EventSource connection failed:', e);
     }
-  },
 
-  updateState: async function (partialState) {
-    if (!this.dbUrl || !this.roomId) return;
-    const url = `${this.dbUrl}/rooms/${this.roomId}.json`;
-    try {
-      const res = await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(partialState)
-      });
-      return await res.json();
-    } catch (err) {
-      console.error('[Sync] updateState error:', err);
+    function getFirebaseUrl(roomCode, subPath = '') {
+        const safeRoom = encodeURIComponent(roomCode);
+        const pathPart = subPath ? `/${subPath}` : '';
+        return `${databaseUrl}/rooms/${safeRoom}${pathPart}.json`;
     }
-  },
 
-  joinGame: async function (playerData) {
-    if (!this.dbUrl || !this.roomId || !playerData || !playerData.id) return;
-    const url = `${this.dbUrl}/rooms/${this.roomId}/players/${playerData.id}.json`;
-    try {
-      const res = await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(playerData)
-      });
-      return await res.json();
-    } catch (err) {
-      console.error('[Sync] joinGame error:', err);
+    function fetchStateFromFirebase(roomCode) {
+        if (!databaseUrl) return;
+        fetch(getFirebaseUrl(roomCode))
+            .then(res => res.json())
+            .then(data => {
+                if (data && typeof data === 'object') {
+                    mergeState(data);
+                    triggerCallback();
+                }
+            })
+            .catch(() => {});
     }
-  },
 
-  patchPlayer: async function (roomId, playerId, playerData) {
-    const targetRoom = roomId || this.roomId;
-    if (!this.dbUrl || !targetRoom || !playerId) return;
-    const url = `${this.dbUrl}/rooms/${targetRoom}/players/${playerId}.json`;
-    try {
-      const res = await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(playerData)
-      });
-      return await res.json();
-    } catch (err) {
-      console.error('[Sync] patchPlayer error:', err);
+    function pushStateToFirebase(roomCode, stateToPush) {
+        if (!databaseUrl) return;
+        fetch(getFirebaseUrl(roomCode), {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(stateToPush)
+        }).catch(err => console.error("GameSync Firebase Push Error:", err));
     }
-  },
 
-  takePhoto: async function (videoElement, canvasElement) {
-    return new Promise((resolve, reject) => {
-      try {
-        const width = 120;
-        const height = 120;
-        canvasElement.width = width;
-        canvasElement.height = height;
-        const ctx = canvasElement.getContext('2d');
-        
-        // Зеркалим изображение для фронтальной камеры
-        ctx.translate(width, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(videoElement, 0, 0, width, height);
+    function initFirebase(roomCode, dbUrl) {
+        if (firebaseInterval) {
+            clearInterval(firebaseInterval);
+            firebaseInterval = null;
+        }
 
-        const base64 = canvasElement.toDataURL('image/jpeg', 0.65);
-        resolve(base64);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
+        databaseUrl = sanitizeDbUrl(dbUrl);
+        if (!databaseUrl) {
+            console.warn("GameSync: Firebase DB URL invalid or omitted. Using local BroadcastChannel.");
+            return;
+        }
+
+        fetchStateFromFirebase(roomCode);
+        firebaseInterval = setInterval(() => {
+            fetchStateFromFirebase(roomCode);
+        }, 1200);
+    }
+
+    return {
+        // Поддержка обеих сигнатур вызова:
+        // 1) init(role, roomCode, dbUrl, callback)
+        // 2) init(roomCode, dbUrl, callback)
+        init: function(arg1, arg2, arg3, arg4) {
+            let roomCode = '';
+            let dbUrl = '';
+            let callback = null;
+
+            if (typeof arg1 === 'string' && (arg1 === 'host' || arg1 === 'player')) {
+                currentRole = arg1;
+                roomCode = arg2;
+                dbUrl = arg3;
+                callback = arg4;
+            } else {
+                currentRole = 'host';
+                roomCode = arg1;
+                dbUrl = arg2;
+                callback = arg3;
+            }
+
+            currentRoomCode = roomCode;
+            if (typeof callback === 'function') {
+                stateChangeCallback = callback;
+            }
+
+            initBroadcastChannel(roomCode);
+            initFirebase(roomCode, dbUrl);
+
+            triggerCallback();
+        },
+
+        onStateChange: function(callback) {
+            if (typeof callback === 'function') {
+                stateChangeCallback = callback;
+                if (localState) {
+                    callback(JSON.parse(JSON.stringify(localState)));
+                }
+            }
+        },
+
+        updateState: function(partialState) {
+            if (!partialState || typeof partialState !== 'object') return;
+
+            mergeState(partialState);
+
+            if (bc) {
+                bc.postMessage(partialState);
+            }
+
+            if (currentRoomCode && databaseUrl) {
+                pushStateToFirebase(currentRoomCode, partialState);
+            }
+
+            triggerCallback();
+        },
+
+        patchPlayer: function(roomCode, playerId, playerData) {
+            const playerUpdate = {
+                players: {
+                    [playerId]: playerData
+                }
+            };
+            this.updateState(playerUpdate);
+        },
+
+        getPlayerId: function() {
+            let playerId = localStorage.getItem('tv_game_player_id');
+            if (!playerId) {
+                playerId = 'player_' + Math.random().toString(36).substring(2, 9);
+                localStorage.setItem('tv_game_player_id', playerId);
+            }
+            return playerId;
+        },
+
+        _getState: () => JSON.parse(JSON.stringify(localState))
+    };
+})();
+
+// Захват квадратного селфи без искажения пропорций
+window.captureSelfie = function(videoElement) {
+    if (!videoElement) return null;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const targetSize = 120;
+    canvas.width = targetSize;
+    canvas.height = targetSize;
+
+    const videoWidth = videoElement.videoWidth || 0;
+    const videoHeight = videoElement.videoHeight || 0;
+
+    if (videoWidth === 0 || videoHeight === 0) return null;
+
+    const minDim = Math.min(videoWidth, videoHeight);
+    const startX = (videoWidth - minDim) / 2;
+    const startY = (videoHeight - minDim) / 2;
+
+    ctx.drawImage(
+        videoElement,
+        startX, startY, minDim, minDim,
+        0, 0, targetSize, targetSize
+    );
+
+    return canvas.toDataURL('image/jpeg', 0.65);
 };
