@@ -34,7 +34,6 @@ const getPawnOffset = (indexOnCell, totalOnCell) => {
         ];
         return { ...offsets[indexOnCell], scale: 0.72 };
     }
-    // 4 и более игроков
     const offsets = [
         { x: -16, y: -14 },
         { x: 16, y: -14 },
@@ -138,7 +137,6 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
             const video = videoRef.current;
             if (!video) return;
 
-            // Защита от съемки до полной отрисовки видеокадра
             if (!isVideoReady || video.videoWidth === 0 || video.readyState < 2) {
                 await new Promise(r => setTimeout(r, 200));
             }
@@ -262,6 +260,7 @@ const TVApp = ({ roomId, dbUrl }) => {
     const roundCorrectRef = useRef({});
     const currentQuestionsRef = useRef([]);
     const nextPhaseTimeoutRef = useRef(null);
+    const isTransitioningRef = useRef(false);
 
     const baseUrl = window.location.origin + window.location.pathname;
     const joinUrl = `${baseUrl}?role=player&room=${roomId}${dbUrl ? `&db=${encodeURIComponent(dbUrl)}` : ''}`;
@@ -338,6 +337,7 @@ const TVApp = ({ roomId, dbUrl }) => {
 
     const startNewRound = () => {
         if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
+        isTransitioningRef.current = false;
 
         const played = gameState?.playedCategories || [];
         const allCategories = window.QuestionBank?.categories || [];
@@ -363,14 +363,16 @@ const TVApp = ({ roomId, dbUrl }) => {
     };
 
     const handleVoteFinished = useCallback(() => {
-        if (!gameState) return;
-        const votes = gameState.categoryVotes || {};
+        if (isTransitioningRef.current) return;
+        isTransitioningRef.current = true;
+
+        const votes = gameState?.categoryVotes || {};
         const voteCounts = {};
         Object.values(votes).forEach(cat => {
             voteCounts[cat] = (voteCounts[cat] || 0) + 1;
         });
 
-        let chosenCat = gameState.categoriesToVote?.[0]?.id || 'cinema';
+        let chosenCat = gameState?.categoriesToVote?.[0]?.id || 'cinema';
         let maxCount = -1;
         for (const [cat, count] of Object.entries(voteCounts)) {
             if (count > maxCount) { 
@@ -389,7 +391,7 @@ const TVApp = ({ roomId, dbUrl }) => {
         window.GameSync.updateState({
             phase: 'question',
             timerEndTime: Date.now() + 15000,
-            playedCategories: [...(gameState.playedCategories || []), chosenCat],
+            playedCategories: [...(gameState?.playedCategories || []), chosenCat],
             categoryVotes: {},
             playerAnswers: {},
             currentQuestionIndex: 0,
@@ -398,9 +400,14 @@ const TVApp = ({ roomId, dbUrl }) => {
                 options: firstQ.options || []
             } : null
         });
+
+        setTimeout(() => {
+            isTransitioningRef.current = false;
+        }, 500);
     }, [gameState]);
 
     const executeRoundMovement = async () => {
+        if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
         setIsAnimatingRoundMoves(true);
         await window.GameSync.updateState({ phase: 'board_move', timerEndTime: 0, currentQuestion: null });
 
@@ -435,12 +442,14 @@ const TVApp = ({ roomId, dbUrl }) => {
     };
 
     const handleShowResultPhase = useCallback(() => {
-        if (!gameState) return;
-        const currentQIndex = gameState.currentQuestionIndex || 0;
+        if (isTransitioningRef.current) return;
+        isTransitioningRef.current = true;
+
+        const currentQIndex = gameState?.currentQuestionIndex || 0;
         const currentQ = currentQuestionsRef.current[currentQIndex];
         const correctIndex = currentQ?.correctIndex ?? currentQ?.correct ?? 0;
 
-        Object.entries(gameState.playerAnswers || {}).forEach(([pid, ans]) => {
+        Object.entries(gameState?.playerAnswers || {}).forEach(([pid, ans]) => {
             if (ans === correctIndex) {
                 roundCorrectRef.current[pid] = (roundCorrectRef.current[pid] || 0) + 1;
             }
@@ -452,6 +461,7 @@ const TVApp = ({ roomId, dbUrl }) => {
         });
 
         if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
+        
         nextPhaseTimeoutRef.current = setTimeout(() => {
             const nextQIndex = currentQIndex + 1;
             if (nextQIndex < 4) {
@@ -466,14 +476,15 @@ const TVApp = ({ roomId, dbUrl }) => {
                         options: nextQ.options || []
                     } : null
                 });
+                isTransitioningRef.current = false;
             } else {
                 executeRoundMovement();
             }
-        }, 7000);
+        }, 5000);
     }, [gameState]);
 
     useEffect(() => {
-        if (!gameState) return;
+        if (!gameState || isTransitioningRef.current) return;
         const { phase, timerEndTime, players, categoryVotes, playerAnswers } = gameState;
         const isTimeUp = timerEndTime > 0 && Date.now() >= timerEndTime;
 
@@ -499,7 +510,6 @@ const TVApp = ({ roomId, dbUrl }) => {
     const currentQ = currentQuestionsRef.current[currentQuestionIndex] || null;
     const currentQCorrectIndex = currentQ ? (currentQ.correctIndex ?? currentQ.correct ?? 0) : 0;
 
-    // Группировка игроков по клеткам для расчета смещения
     const cellGroups = {};
     playersList.forEach(p => {
         const cell = visualPositions[p.id] ?? p.position ?? 0;

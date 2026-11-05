@@ -1,305 +1,244 @@
 // filename: sync.js
-(function() {
-    // Утилита проверки на объект
-    const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
+window.GameSync = (function() {
+    let stateChangeCallback = null;
+    let currentRoomCode = null;
+    let databaseUrl = null;
+    let currentRole = null;
+    let bc = null; // BroadcastChannel
+    let firebaseInterval = null;
 
-    // Глубокое слияние состояний
-    const mergeDeep = (target, source) => {
-        if (!isObject(target) || !isObject(source)) return source;
-        const output = Object.assign({}, target);
-        Object.keys(source).forEach(key => {
-            if (isObject(source[key])) {
-                if (!(key in target)) {
-                    Object.assign(output, { [key]: source[key] });
-                } else {
-                    output[key] = mergeDeep(target[key], source[key]);
-                }
-            } else {
-                output[key] = source[key];
-            }
-        });
-        return output;
-    };
-
-    // Плоское преобразование объекта для безопасного PATCH-запроса в Firebase
-    const flattenObject = (obj, prefix = '') => {
-        return Object.keys(obj).reduce((acc, k) => {
-            const pre = prefix.length ? prefix + '/' : '';
-            if (isObject(obj[k]) && Object.keys(obj[k]).length > 0) {
-                Object.assign(acc, flattenObject(obj[k], pre + k));
-            } else {
-                acc[pre + k] = obj[k];
-            }
-            return acc;
-        }, {});
-    };
-
-    const sanitize = (data) => {
-        if (!data) return {};
+    function safeParse(str) {
         try {
-            return typeof data === 'string' ? JSON.parse(data) : data;
+            return JSON.parse(str);
         } catch (e) {
-            console.error("GameSync: Invalid JSON data received", e);
-            return {};
+            console.error("GameSync JSON Parse Error:", e);
+            return null;
         }
+    }
+
+    function sanitizeDbUrl(url) {
+        if (!url || typeof url !== 'string') return null;
+        const trimmed = url.trim().replace(/\/+$/, '');
+        if (!trimmed.startsWith('https://')) return null;
+        if (!trimmed.includes('firebaseio.com') && !trimmed.includes('firebasedatabase.app')) return null;
+        return trimmed;
+    }
+
+    let localState = {
+        phase: 'lobby',
+        players: {},
+        categoryVotes: {},
+        playerAnswers: {},
+        currentRound: 0,
+        currentQuestionIndex: 0,
+        timerEndTime: 0,
+        currentQuestion: null
     };
 
-    // Глобальная функция захвата селфи в высоком качестве с оптимизацией веса
-    window.captureSelfie = function(videoElement) {
-        if (!videoElement) return null;
-        
-        const canvas = document.createElement('canvas');
-        const targetSize = 320; // Высокая четкость при оптимальном весе
-        canvas.width = targetSize;
-        canvas.height = targetSize;
-        
-        const ctx = canvas.getContext('2d');
-        const vWidth = videoElement.videoWidth || 320;
-        const vHeight = videoElement.videoHeight || 320;
-        const minSide = Math.min(vWidth, vHeight);
-        
-        const sx = (vWidth - minSide) / 2;
-        const sy = (vHeight - minSide) / 2;
-
-        ctx.drawImage(videoElement, sx, sy, minSide, minSide, 0, 0, targetSize, targetSize);
-        
-        let dataUrl = canvas.toDataURL('image/webp', 0.8);
-        if (!dataUrl || dataUrl.indexOf('data:image/webp') !== 0) {
-            dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    function triggerCallback() {
+        if (stateChangeCallback) {
+            stateChangeCallback(JSON.parse(JSON.stringify(localState)));
         }
-        return dataUrl;
-    };
+    }
 
-    const DEFAULT_DB_URL = 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app';
+    function isObject(item) {
+        return (item && typeof item === 'object' && !Array.isArray(item));
+    }
 
-    window.GameSync = {
-        roomCode: null,
-        dbUrl: DEFAULT_DB_URL,
-        isFirebase: false,
-        channel: null,
-        onStateChangeCallback: null,
-        onErrorCallback: null,
-        currentState: {},
-        pollTimer: null,
-        _firebaseErrorLogged: false,
+    // Ключи, которые при передаче пустого объекта {} должны очищаться, а не мерджиться
+    const RESET_KEYS = ['playerAnswers', 'categoryVotes'];
 
-        init: function(roomCode, dbUrl, onStateChangeCallback) {
-            if (arguments[0] === 'host' || arguments[0] === 'player') {
-                roomCode = arguments[1];
-                dbUrl = arguments[2];
-                onStateChangeCallback = arguments[3];
-            }
+    function mergeDeep(target, source) {
+        if (!isObject(target) || !isObject(source)) return;
 
-            this.roomCode = (roomCode || '').replace(/[^a-zA-Z0-9]/g, '');
-            
-            const rawUrl = (dbUrl && typeof dbUrl === 'string' && dbUrl.trim()) || localStorage.getItem('firebaseDbUrl') || DEFAULT_DB_URL;
-            this.dbUrl = rawUrl.trim().replace(/\/+$/, '');
-            try {
-                localStorage.setItem('firebaseDbUrl', this.dbUrl);
-            } catch (e) {}
-
-            this.currentState = {};
-            this._firebaseErrorLogged = false;
-
-            if (typeof onStateChangeCallback === 'function') {
-                this.onStateChangeCallback = onStateChangeCallback;
-            }
-
-            if (this.pollTimer) clearInterval(this.pollTimer);
-            if (this.channel) this.channel.close();
-
-            try {
-                this.channel = new BroadcastChannel(`game_room_${this.roomCode}`);
-                this.channel.onmessage = (event) => {
-                    const data = sanitize(event.data);
-                    if (data.type === 'STATE_UPDATE') {
-                        this._notify(data.state);
-                    } else if (data.type === 'PLAYER_PATCH') {
-                        const patch = { players: { [data.playerId]: data.playerData } };
-                        this._notify(patch);
-                    }
-                };
-            } catch (e) {
-                console.error("GameSync: BroadcastChannel failed", e);
-            }
-
-            const isValidDb = this.dbUrl && 
-                this.dbUrl.startsWith('https://') && 
-                (this.dbUrl.includes('firebaseio.com') || this.dbUrl.includes('firebasedatabase.app'));
-
-            if (isValidDb) {
-                this.isFirebase = true;
-                this._pollFirebase().catch(() => {
-                    this._triggerError('Ошибка Firebase, используется локальный режим');
-                });
-                this.pollTimer = setInterval(() => this._pollFirebase(), 1200);
+        for (const key in source) {
+            if (RESET_KEYS.includes(key)) {
+                // Если пришел сброс (пустой объект или передан заново список ответов)
+                target[key] = { ...(source[key] || {}) };
+            } else if (source[key] === null) {
+                target[key] = null;
+            } else if (Array.isArray(source[key])) {
+                target[key] = [...source[key]];
+            } else if (isObject(source[key])) {
+                if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
+                    target[key] = {};
+                }
+                mergeDeep(target[key], source[key]);
             } else {
-                this.isFirebase = false;
-                this._triggerError('Нет подключения к БД. Включен режим локальных вкладок.');
+                target[key] = source[key];
             }
+        }
+    }
+
+    function mergeState(partialState) {
+        if (!partialState || typeof partialState !== 'object') return;
+        mergeDeep(localState, partialState);
+    }
+
+    function initBroadcastChannel(roomCode) {
+        if (window.BroadcastChannel) {
+            if (bc) {
+                try { bc.close(); } catch (e) {}
+            }
+            bc = new BroadcastChannel('tv_game_sync_' + roomCode);
+            bc.onmessage = (event) => {
+                const incoming = typeof event.data === 'string' ? safeParse(event.data) : event.data;
+                if (incoming) {
+                    mergeState(incoming);
+                    triggerCallback();
+                }
+            };
+        }
+    }
+
+    function getFirebaseUrl(roomCode, subPath = '') {
+        const safeRoom = encodeURIComponent(roomCode);
+        const pathPart = subPath ? `/${subPath}` : '';
+        return `${databaseUrl}/rooms/${safeRoom}${pathPart}.json`;
+    }
+
+    function fetchStateFromFirebase(roomCode) {
+        if (!databaseUrl) return;
+        fetch(getFirebaseUrl(roomCode))
+            .then(res => res.json())
+            .then(data => {
+                if (data && typeof data === 'object') {
+                    mergeState(data);
+                    triggerCallback();
+                }
+            })
+            .catch(() => {});
+    }
+
+    function pushStateToFirebase(roomCode, stateToPush) {
+        if (!databaseUrl) return;
+        fetch(getFirebaseUrl(roomCode), {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(stateToPush)
+        }).catch(err => console.error("GameSync Firebase Push Error:", err));
+    }
+
+    function initFirebase(roomCode, dbUrl) {
+        if (firebaseInterval) {
+            clearInterval(firebaseInterval);
+            firebaseInterval = null;
+        }
+
+        databaseUrl = sanitizeDbUrl(dbUrl);
+        if (!databaseUrl) {
+            console.warn("GameSync: Firebase DB URL invalid or omitted. Using local BroadcastChannel.");
+            return;
+        }
+
+        fetchStateFromFirebase(roomCode);
+        firebaseInterval = setInterval(() => {
+            fetchStateFromFirebase(roomCode);
+        }, 1200);
+    }
+
+    return {
+        init: function(arg1, arg2, arg3, arg4) {
+            let roomCode = '';
+            let dbUrl = '';
+            let callback = null;
+
+            if (typeof arg1 === 'string' && (arg1 === 'host' || arg1 === 'player')) {
+                currentRole = arg1;
+                roomCode = arg2;
+                dbUrl = arg3;
+                callback = arg4;
+            } else {
+                currentRole = 'host';
+                roomCode = arg1;
+                dbUrl = arg2;
+                callback = arg3;
+            }
+
+            currentRoomCode = roomCode;
+            if (typeof callback === 'function') {
+                stateChangeCallback = callback;
+            }
+
+            initBroadcastChannel(roomCode);
+            initFirebase(roomCode, dbUrl);
+
+            triggerCallback();
         },
 
         onStateChange: function(callback) {
-            this.onStateChangeCallback = callback;
-        },
-
-        onError: function(callback) {
-            this.onErrorCallback = callback;
-        },
-
-        _triggerError: function(message) {
-            if (!this._firebaseErrorLogged) {
-                console.warn(`GameSync Warning: ${message}`);
-                if (typeof this.onErrorCallback === 'function') {
-                    this.onErrorCallback(message);
-                }
-                this._firebaseErrorLogged = true;
-            }
-        },
-
-        updateState: async function(newState) {
-            const safeState = sanitize(newState);
-            this._notify(safeState);
-
-            if (this.channel) {
-                this.channel.postMessage({ type: 'STATE_UPDATE', state: safeState });
-            }
-
-            if (this.isFirebase) {
-                try {
-                    const flatState = flattenObject(safeState);
-                    await fetch(`${this.dbUrl}/rooms/${this.roomCode}.json`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(flatState)
-                    });
-                } catch (e) {
-                    this._triggerError('Ошибка Firebase при обновлении, используется локальный режим');
+            if (typeof callback === 'function') {
+                stateChangeCallback = callback;
+                if (localState) {
+                    callback(JSON.parse(JSON.stringify(localState)));
                 }
             }
         },
 
-        patchPlayer: async function(roomCode, playerId, playerData) {
-            const safeData = sanitize(playerData);
-            const cleanRoomCode = (roomCode || this.roomCode || '').replace(/[^a-zA-Z0-9]/g, '');
-            
-            if (!this.currentState.players) this.currentState.players = {};
-            const localPatch = { players: { [playerId]: safeData } };
-            this._notify(localPatch);
+        updateState: function(partialState) {
+            if (!partialState || typeof partialState !== 'object') return;
 
-            if (this.channel) {
-                this.channel.postMessage({ type: 'PLAYER_PATCH', playerId, playerData: safeData });
+            mergeState(partialState);
+
+            if (bc) {
+                bc.postMessage(partialState);
             }
 
-            if (this.isFirebase) {
-                try {
-                    const flatPatch = flattenObject(safeData, `players/${playerId}`);
-                    await fetch(`${this.dbUrl}/rooms/${cleanRoomCode}.json`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(flatPatch)
-                    });
-                } catch (e) {
-                    this._triggerError('Ошибка Firebase при обновлении игрока, используется локальный режим');
+            if (currentRoomCode && databaseUrl) {
+                pushStateToFirebase(currentRoomCode, partialState);
+            }
+
+            triggerCallback();
+        },
+
+        patchPlayer: function(roomCode, playerId, playerData) {
+            const playerUpdate = {
+                players: {
+                    [playerId]: playerData
                 }
-            }
+            };
+            this.updateState(playerUpdate);
         },
 
-        joinGame: function(playerData) {
-            if (!playerData || !playerData.id) return;
-            this.patchPlayer(this.roomCode, playerData.id, playerData);
+        getPlayerId: function() {
+            let playerId = localStorage.getItem('tv_game_player_id');
+            if (!playerId) {
+                playerId = 'player_' + Math.random().toString(36).substring(2, 9);
+                localStorage.setItem('tv_game_player_id', playerId);
+            }
+            return playerId;
         },
 
-        sendAction: function(actionType, payload) {
-            const playerId = localStorage.getItem('party_quiz_player_id');
-            if (!playerId) return;
-
-            if (actionType === 'vote') {
-                this.patchPlayer(this.roomCode, playerId, { currentVote: payload.categoryId });
-            } else if (actionType === 'answer') {
-                this.patchPlayer(this.roomCode, playerId, { currentAnswer: payload.answerIndex });
-            }
-        },
-
-        initCamera: async function(videoElement) {
-            if (!videoElement) return;
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'user',
-                        width: { ideal: 640 },
-                        height: { ideal: 640 }
-                    } 
-                });
-                videoElement.srcObject = stream;
-                videoElement.setAttribute('playsinline', 'true');
-                videoElement.setAttribute('autoplay', 'true');
-                videoElement.setAttribute('muted', 'true');
-                await new Promise((resolve, reject) => {
-                    videoElement.onloadedmetadata = () => {
-                        videoElement.play().then(resolve).catch(reject);
-                    };
-                    videoElement.onerror = reject;
-                });
-            } catch (err) {
-                console.error("GameSync: Camera init failed", err);
-                throw err;
-            }
-        },
-
-        takePhoto: function(videoElement, canvasElement) {
-            if (!videoElement) return null;
-            if (canvasElement) {
-                const targetSize = 320;
-                canvasElement.width = targetSize;
-                canvasElement.height = targetSize;
-                const ctx = canvasElement.getContext('2d');
-                const vWidth = videoElement.videoWidth || 320;
-                const vHeight = videoElement.videoHeight || 320;
-                const size = Math.min(vWidth, vHeight);
-                const startX = (vWidth - size) / 2;
-                const startY = (vHeight - size) / 2;
-                ctx.drawImage(videoElement, startX, startY, size, size, 0, 0, targetSize, targetSize);
-                
-                let dataUrl = canvasElement.toDataURL('image/webp', 0.8);
-                if (!dataUrl || dataUrl.indexOf('data:image/webp') !== 0) {
-                    dataUrl = canvasElement.toDataURL('image/jpeg', 0.8);
-                }
-                return dataUrl;
-            }
-            return window.captureSelfie(videoElement);
-        },
-
-        stopCamera: function(videoElement) {
-            if (videoElement && videoElement.srcObject) {
-                videoElement.srcObject.getTracks().forEach(track => track.stop());
-                videoElement.srcObject = null;
-            }
-        },
-
-        _pollFirebase: async function() {
-            if (!this.isFirebase) return;
-            try {
-                const response = await fetch(`${this.dbUrl}/rooms/${this.roomCode}.json`);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data) {
-                        this._notify(sanitize(data));
-                    }
-                } else {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-            } catch (e) {
-                this._triggerError('Ошибка опроса Firebase, используется локальный режим');
-                throw e;
-            }
-        },
-
-        _notify: function(partialState) {
-            this.currentState = mergeDeep(this.currentState, partialState);
-            if (typeof this.onStateChangeCallback === 'function') {
-                this.onStateChangeCallback(this.currentState);
-            }
-        }
+        _getState: () => JSON.parse(JSON.stringify(localState))
     };
 })();
+
+// Захват квадратного селфи без искажения пропорций
+window.captureSelfie = function(videoElement) {
+    if (!videoElement) return null;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const targetSize = 120;
+    canvas.width = targetSize;
+    canvas.height = targetSize;
+
+    const videoWidth = videoElement.videoWidth || 0;
+    const videoHeight = videoElement.videoHeight || 0;
+
+    if (videoWidth === 0 || videoHeight === 0) return null;
+
+    const minDim = Math.min(videoWidth, videoHeight);
+    const startX = (videoWidth - minDim) / 2;
+    const startY = (videoHeight - minDim) / 2;
+
+    ctx.drawImage(
+        videoElement,
+        startX, startY, minDim, minDim,
+        0, 0, targetSize, targetSize
+    );
+
+    return canvas.toDataURL('image/jpeg', 0.65);
+};
