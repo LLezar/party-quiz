@@ -1,66 +1,70 @@
+/* filename: styles.css */
 /* ==========================================================================
-   PARTY QUIZ BOARD GAME — STYLESHEET (DESIGNER EDITION)
+   PARTY QUIZ BOARD GAME — TOON EDITION (STYLESHEET)
+   Яркий, мультяшный стиль с комиксными обводками и крупными bobblehead-фигурками!
    ========================================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700;800&family=Rubik:wght@500;700;900&display=swap');
+
 :root {
-  /* Палитра темы: вечерний неоновый оливково-золотой стиль */
-  --bg-primary: #0f150e;
-  --bg-secondary: #172115;
-  --bg-olive-dark: #1d2a1b;
-  --bg-olive-medium: #2e4029;
-  --bg-olive-light: #445c3d;
-  --bg-olive-accent: #688c5d;
+  /* Мультяшная палитра */
+  --bg-primary: #1e1145;
+  --bg-gradient-top: #ff758c;
+  --bg-gradient-mid: #7b2cbf;
+  --bg-gradient-bottom: #1e1145;
 
-  /* Акцентные контрастные цвета */
+  /* Сочные комиксные цвета */
+  --accent-yellow: #ffe600;
+  --accent-orange: #ff9100;
+  --accent-pink: #ff2a85;
+  --accent-cyan: #00f0ff;
+  --accent-green: #25e672;
+  --accent-red: #ff3366;
+  --accent-purple: #9d4edd;
+
+  /* Контрастный текст и обводки */
   --color-white: #ffffff;
-  --color-cream: #f5f8f3;
-  --color-text-dim: #a9bea3;
+  --color-dark: #191024;
+  --comic-border: #140d21;
+  --comic-border-width: 4px;
+  --comic-border-thin: 3px;
 
-  --accent-yellow: #facc15;
-  --accent-yellow-hover: #eab308;
-  --accent-yellow-glow: rgba(250, 204, 21, 0.55);
+  /* Карточки */
+  --card-bg: rgba(255, 255, 255, 0.95);
+  --card-shadow: 0 12px 0 var(--comic-border), 0 20px 30px rgba(0, 0, 0, 0.4);
 
-  --accent-red: #ef4444;
-  --accent-red-hover: #dc2626;
-  --accent-red-glow: rgba(239, 68, 68, 0.55);
+  /* Кнопки викторины (сочные мультяшные цвета) */
+  --btn-a-bg: #ff3b69;
+  --btn-a-shadow: #b31439;
+  --btn-b-bg: #ffb703;
+  --btn-b-shadow: #ba7e00;
+  --btn-c-bg: #00c8ff;
+  --btn-c-shadow: #0087b3;
+  --btn-d-bg: #2ecc71;
+  --btn-d-shadow: #198c47;
 
-  --accent-olive-glow: rgba(104, 140, 93, 0.45);
+  /* Состояния кнопок */
+  --btn-selected-bg: #ffea00;
+  --btn-selected-shadow: #cc9900;
+  --btn-correct-bg: #00e676;
+  --btn-correct-shadow: #009643;
+  --btn-wrong-bg: #ff1744;
+  --btn-wrong-shadow: #b20527;
 
-  /* Карточки и модалки */
-  --card-bg: rgba(24, 34, 22, 0.88);
-  --card-border: rgba(104, 140, 93, 0.45);
-  --card-border-hover: rgba(250, 204, 21, 0.7);
-  --card-shadow: 0 20px 45px rgba(0, 0, 0, 0.75);
-
-  /* Кнопки викторины */
-  --btn-quiz-bg: #1c2619;
-  --btn-quiz-border: #384c33;
-  --btn-quiz-hover: #293825;
-
-  --btn-a-accent: #ef4444; /* Красный */
-  --btn-b-accent: #facc15; /* Желтый */
-  --btn-c-accent: #38bdf8; /* Голубой / Белый акцент */
-  --btn-d-accent: #84cc16; /* Салатовый */
-
-  /* Состояния кнопок ответов */
-  --btn-selected-bg: #facc15;
-  --btn-selected-text: #141c12;
-  --btn-correct-bg: #3f6212;
-  --btn-correct-border: #a3e635;
-  --btn-wrong-bg: #991b1b;
-  --btn-wrong-border: #ef4444;
-
-  /* Поле игры (Full Screen) */
-  --board-bg: #111710;
-  --cell-bg: #1b2619;
-  --cell-border: #2f422b;
-  --cell-hover: #2a3d27;
+  /* Игровое поле */
+  --board-bg: #2a164d;
+  --board-border: #130a24;
+  --cell-bg: #442478;
+  --cell-border: #1a0f30;
+  --cell-active: #ffe600;
+  --cell-start: #00e676;
+  --cell-finish: #ff007f;
 
   /* Шрифты и радиусы */
-  --font-family: 'Rubik', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --radius-xl: 24px;
-  --radius-lg: 16px;
-  --radius-md: 10px;
+  --font-toon: 'Fredoka', 'Rubik', cursive, system-ui, sans-serif;
+  --radius-xl: 28px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
   --radius-round: 9999px;
 }
 
@@ -79,11 +83,12 @@
 html, body {
   width: 100%;
   height: 100%;
+  min-height: 100%;
   background-color: var(--bg-primary);
   color: var(--color-white);
-  font-family: var(--font-family);
+  font-family: var(--font-toon);
   font-size: 16px;
-  line-height: 1.4;
+  line-height: 1.3;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
@@ -92,34 +97,41 @@ html, body {
 #root {
   width: 100%;
   height: 100%;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  color: var(--color-white);
-  font-weight: 900;
-  letter-spacing: -0.01em;
-  text-shadow: 0 3px 8px rgba(0, 0, 0, 0.8);
+  font-family: var(--font-toon);
+  color: var(--accent-yellow);
+  font-weight: 800;
+  text-shadow: 
+    3px 3px 0 var(--comic-border),
+    -2px -2px 0 var(--comic-border),
+    2px -2px 0 var(--comic-border),
+    -2px 2px 0 var(--comic-border),
+    0 6px 0 var(--comic-border);
+  letter-spacing: 0.5px;
 }
 
 p, span, label {
-  color: var(--color-cream);
+  font-family: var(--font-toon);
+  color: #fff;
   font-weight: 600;
 }
 
 /* ==========================================================================
-   ФОН И ГЛАВНЫЕ КОНТЕЙНЕРЫ
+   ФОН И ГЛАВНЫЕ КОНТЕЙНЕРЫ (АДАПТИВ ПОД 100DVH ДЛЯ МОБИЛОК)
    ========================================================================== */
 
 .app-bg {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: 
-    radial-gradient(circle at 10% 20%, rgba(104, 140, 93, 0.3) 0%, transparent 45%),
-    radial-gradient(circle at 90% 85%, rgba(250, 204, 21, 0.18) 0%, transparent 45%),
-    radial-gradient(circle at 50% 50%, #1a2418 0%, #10160f 65%, #080c07 100%);
+    radial-gradient(circle at 85% 15%, rgba(255, 117, 140, 0.45) 0%, transparent 40%),
+    radial-gradient(circle at 15% 85%, rgba(0, 240, 255, 0.35) 0%, transparent 45%),
+    linear-gradient(135deg, #3d1b7a 0%, #1e1145 50%, #0f0724 100%);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -128,14 +140,13 @@ p, span, label {
   justify-content: center;
 }
 
+/* Мультяшный горошек на фоне (Comic Polka Dot) */
 .app-bg::before {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: 
-    radial-gradient(rgba(245, 248, 243, 0.06) 1.5px, transparent 1.5px),
-    linear-gradient(to right, rgba(104, 140, 93, 0.05) 1px, transparent 1px);
-  background-size: 36px 36px;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.12) 3px, transparent 3px);
+  background-size: 32px 32px;
   pointer-events: none;
   z-index: 1;
 }
@@ -143,12 +154,13 @@ p, span, label {
 .tv-container {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   position: relative;
   z-index: 2;
-  padding: 12px;
+  padding: 16px;
   overflow: hidden;
 }
 
@@ -156,208 +168,241 @@ p, span, label {
   width: 100%;
   max-width: 480px;
   height: 100vh;
-  min-height: 100vh;
+  height: 100dvh; /* Гарантия против съедания экрана панелями браузера */
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   position: relative;
   z-index: 2;
-  gap: 14px;
-  padding: 14px;
+  gap: 10px;
+  padding: 10px 12px;
   margin: 0 auto;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* ==========================================================================
-   СТЕКЛЯННЫЕ КАРТОЧКИ (GLASS-CARD)
+   СТЕКЛЯННЫЕ И МУЛЬТЯШНЫЕ КАРТОЧКИ (.GLASS-CARD)
    ========================================================================== */
 
 .glass-card {
-  background: var(--card-bg);
-  border: 2px solid var(--card-border);
+  background: #ffffff;
+  color: var(--color-dark);
+  border: var(--comic-border-width) solid var(--comic-border);
   border-radius: var(--radius-xl);
-  box-shadow: var(--card-shadow), inset 0 1px 1px rgba(255, 255, 255, 0.2);
-  padding: 24px;
+  box-shadow: 0 10px 0 var(--comic-border), 0 20px 25px rgba(0, 0, 0, 0.35);
+  padding: 20px;
   position: relative;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  color: var(--color-white);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+  z-index: 5;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.glass-card:hover {
-  border-color: var(--card-border-hover);
+.glass-card p, 
+.glass-card span,
+.glass-card label {
+  color: var(--color-dark);
+}
+
+.glass-card h1, 
+.glass-card h2, 
+.glass-card h3 {
+  color: var(--accent-orange);
 }
 
 /* ==========================================================================
-   ГЛАВНЫЕ КНОПКИ (PRIMARY-BTN)
+   ГЛАВНЫЕ КНОПКИ (.PRIMARY-BTN)
    ========================================================================== */
 
 .primary-btn {
-  background: linear-gradient(135deg, var(--accent-yellow) 0%, #d97706 100%);
-  color: #121811 !important;
-  border: 2px solid #fef08a;
+  background: linear-gradient(180deg, #ffe600 0%, #ff9900 100%);
+  color: var(--color-dark) !important;
+  border: var(--comic-border-width) solid var(--comic-border);
   outline: none;
-  font-family: inherit;
-  font-size: 1.25rem;
-  font-weight: 900;
-  padding: 18px 34px;
+  font-family: var(--font-toon);
+  font-size: 1.35rem;
+  font-weight: 800;
+  padding: 14px 28px;
   border-radius: var(--radius-lg);
   cursor: pointer;
-  box-shadow: 0 10px 28px var(--accent-yellow-glow), inset 0 2px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: 0 8px 0 var(--comic-border), 0 14px 20px rgba(0, 0, 0, 0.35);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   text-transform: uppercase;
   letter-spacing: 1px;
   pointer-events: auto;
-  transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
 .primary-btn:hover:not(:disabled) {
-  transform: translateY(-3px) scale(1.02);
-  filter: brightness(1.12);
-  box-shadow: 0 14px 34px var(--accent-yellow-glow);
+  transform: translateY(-3px);
+  box-shadow: 0 11px 0 var(--comic-border), 0 18px 25px rgba(0, 0, 0, 0.4);
 }
 
 .primary-btn:active:not(:disabled) {
-  transform: translateY(1px) scale(0.98);
+  transform: translateY(6px);
+  box-shadow: 0 2px 0 var(--comic-border);
 }
 
 .primary-btn:disabled {
-  background: #232d20 !important;
-  border-color: #354431 !important;
-  color: #657560 !important;
+  background: #a099b2 !important;
+  border-color: #615a72 !important;
+  color: #514a60 !important;
+  box-shadow: 0 6px 0 #4a4358 !important;
   cursor: not-allowed;
-  box-shadow: none !important;
   transform: none !important;
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 /* ==========================================================================
-   КНОПКИ ВИКТОРИНЫ (ТАЧИ, КЛИКИ, СОСТОЯНИЯ)
+   КАРТИНКА К ВОПРОСУ (.QUESTION-IMAGE)
+   ========================================================================== */
+
+.question-image {
+  width: auto;
+  max-width: 100%;
+  max-height: 150px;
+  height: auto;
+  object-fit: contain;
+  border: var(--comic-border-width) solid var(--comic-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 0 var(--comic-border);
+  background: #ffffff;
+  margin: 6px auto 12px auto;
+  display: block;
+}
+
+/* ==========================================================================
+   КНОПКИ ВИКТОРИНЫ (.QUIZ-BTN, .QUIZ-BTN-A..D)
    ========================================================================== */
 
 .quiz-btn {
-  background-color: var(--btn-quiz-bg);
-  border: 2px solid var(--btn-quiz-border);
+  border: var(--comic-border-width) solid var(--comic-border);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
-  font-family: inherit;
-  color: var(--color-white) !important;
+  padding: 10px 14px;
+  font-family: var(--font-toon);
+  color: #ffffff !important;
   cursor: pointer;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 16px;
-  min-height: 80px;
+  gap: 14px;
+  min-height: 64px;
   width: 100%;
   text-align: left;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4);
   pointer-events: auto;
   z-index: 10;
   touch-action: manipulation;
-  transition: transform 0.12s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.quiz-btn:hover:not(:disabled) {
-  background-color: var(--btn-quiz-hover);
-  border-color: var(--bg-olive-accent);
-  transform: translateY(-2px);
-}
-
-.quiz-btn:active:not(:disabled) {
-  transform: scale(0.98);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.12s ease;
 }
 
 .quiz-btn-letter {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  background-color: #0e140d;
-  border: 3px solid currentColor;
-  border-radius: var(--radius-md);
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  background-color: #ffffff;
+  color: var(--color-dark) !important;
+  border: 3px solid var(--comic-border);
+  border-radius: 12px;
   font-size: 1.4rem;
   font-weight: 900;
   flex-shrink: 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 3px 0 var(--comic-border);
 }
 
 .quiz-btn-text {
-  font-size: 1.2rem;
-  font-weight: 800;
-  line-height: 1.35;
-  color: var(--color-white) !important;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 var(--comic-border), -1px -1px 0 var(--comic-border);
   word-break: break-word;
   flex: 1;
 }
 
-.quiz-btn-a { border-left-width: 10px; border-left-color: var(--btn-a-accent); }
-.quiz-btn-a .quiz-btn-letter { color: var(--btn-a-accent); }
+/* Цвета для вариантов ответов */
+.quiz-btn-a {
+  background-color: var(--btn-a-bg);
+  box-shadow: 0 7px 0 var(--btn-a-shadow), 0 12px 16px rgba(0, 0, 0, 0.3);
+}
+.quiz-btn-a:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow: 0 2px 0 var(--btn-a-shadow);
+}
 
-.quiz-btn-b { border-left-width: 10px; border-left-color: var(--btn-b-accent); }
-.quiz-btn-b .quiz-btn-letter { color: var(--btn-b-accent); }
+.quiz-btn-b {
+  background-color: var(--btn-b-bg);
+  box-shadow: 0 7px 0 var(--btn-b-shadow), 0 12px 16px rgba(0, 0, 0, 0.3);
+}
+.quiz-btn-b:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow: 0 2px 0 var(--btn-b-shadow);
+}
 
-.quiz-btn-c { border-left-width: 10px; border-left-color: var(--btn-c-accent); }
-.quiz-btn-c .quiz-btn-letter { color: var(--btn-c-accent); }
+.quiz-btn-c {
+  background-color: var(--btn-c-bg);
+  box-shadow: 0 7px 0 var(--btn-c-shadow), 0 12px 16px rgba(0, 0, 0, 0.3);
+}
+.quiz-btn-c:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow: 0 2px 0 var(--btn-c-shadow);
+}
 
-.quiz-btn-d { border-left-width: 10px; border-left-color: var(--btn-d-accent); }
-.quiz-btn-d .quiz-btn-letter { color: var(--btn-d-accent); }
+.quiz-btn-d {
+  background-color: var(--btn-d-bg);
+  box-shadow: 0 7px 0 var(--btn-d-shadow), 0 12px 16px rgba(0, 0, 0, 0.3);
+}
+.quiz-btn-d:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow: 0 2px 0 var(--btn-d-shadow);
+}
 
-/* Выбранный вариант */
+/* Выбранный вариант ответов */
 .quiz-btn-selected {
   background-color: var(--btn-selected-bg) !important;
-  border-color: #ffffff !important;
-  border-width: 4px !important;
-  box-shadow: 0 0 32px var(--accent-yellow-glow), inset 0 0 12px rgba(255, 255, 255, 0.6) !important;
-  transform: scale(1.03);
+  box-shadow: 0 7px 0 var(--btn-selected-shadow), 0 0 25px var(--accent-yellow) !important;
+  transform: scale(1.02);
 }
 .quiz-btn-selected .quiz-btn-text {
-  color: var(--btn-selected-text) !important;
-  font-weight: 900;
-}
-.quiz-btn-selected .quiz-btn-letter {
-  background-color: #172115 !important;
-  color: var(--accent-yellow) !important;
-  border-color: #172115 !important;
+  color: var(--color-dark) !important;
+  text-shadow: none !important;
 }
 
-/* Верный вариант */
+/* Верный ответ */
 .quiz-btn-correct {
   background-color: var(--btn-correct-bg) !important;
-  border: 4px solid var(--btn-correct-border) !important;
-  box-shadow: 0 0 32px rgba(163, 230, 53, 0.75) !important;
-  transform: scale(1.03);
-  animation: pulseGreen 1.4s infinite alternate ease-in-out;
+  box-shadow: 0 7px 0 var(--btn-correct-shadow), 0 0 35px var(--accent-green) !important;
+  animation: toonBounce 0.6s infinite alternate ease-in-out;
 }
-.quiz-btn-correct .quiz-btn-text { color: #ffffff !important; }
-.quiz-btn-correct .quiz-btn-letter {
-  background-color: var(--btn-correct-border) !important;
-  color: #142308 !important;
-  border-color: #ffffff !important;
+.quiz-btn-correct .quiz-btn-text {
+  color: #ffffff !important;
 }
 
-/* Неверный вариант */
+/* Неверный ответ */
 .quiz-btn-wrong {
   background-color: var(--btn-wrong-bg) !important;
-  border: 4px solid var(--btn-wrong-border) !important;
-  box-shadow: 0 0 28px var(--accent-red-glow) !important;
-  opacity: 0.95;
+  box-shadow: 0 7px 0 var(--btn-wrong-shadow) !important;
+  animation: toonShake 0.4s ease-in-out;
 }
-.quiz-btn-wrong .quiz-btn-text { color: #ffe4e6 !important; }
-.quiz-btn-wrong .quiz-btn-letter {
-  background-color: var(--btn-wrong-border) !important;
-  color: #ffffff !important;
-  border-color: #ffffff !important;
+
+@keyframes toonBounce {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.03) translateY(-3px); }
+}
+
+@keyframes toonShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
 }
 
 /* ==========================================================================
-   ПОЛНОЭКРАННОЕ ИГРОВОЕ ПОЛЕ (FULL SCREEN 100vh / 100%)
+   ПОЛЕ ИГРЫ И РАССТАНОВКА ИГРОКОВ БЕЗ НАЛОЖЕНИЯ
    ========================================================================== */
 
 .board-container {
@@ -369,132 +414,110 @@ p, span, label {
   align-items: center;
   position: relative;
   overflow: hidden;
-  padding: 10px;
+  padding: 8px;
 }
 
 .board-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: repeat(5, 1fr);
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   height: 100%;
   max-width: 100vw;
   max-height: 100vh;
   background-color: var(--board-bg);
-  padding: 14px;
+  padding: 12px;
   border-radius: var(--radius-xl);
-  border: 3px solid var(--bg-olive-medium);
-  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.85), 0 20px 40px rgba(0, 0, 0, 0.9);
+  border: var(--comic-border-width) solid var(--board-border);
+  box-shadow: 0 16px 0 var(--comic-border), 0 25px 40px rgba(0, 0, 0, 0.6);
   position: relative;
 }
 
-.board-grid::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: repeating-linear-gradient(
-    45deg,
-    rgba(104, 140, 93, 0.04),
-    rgba(104, 140, 93, 0.04) 20px,
-    transparent 20px,
-    transparent 40px
-  );
-  pointer-events: none;
-  z-index: 0;
-}
-
+/* Клетка поля (Flexbox с переносом для предотвращения наложения фигурок) */
 .board-cell {
   position: relative;
   width: 100%;
   height: 100%;
   background-color: var(--cell-bg);
-  border: 2.5px solid var(--cell-border);
+  border: var(--comic-border-thin) solid var(--cell-border);
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-wrap: wrap; /* Игроки не накладываются, а выстраиваются в ряд или переносятся ниже */
   justify-content: center;
-  gap: 8px;
-  font-size: 1.4rem;
-  font-weight: 900;
-  color: var(--color-cream);
-  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
-  transition: all 0.25s ease;
+  align-items: center;
+  align-content: center;
+  gap: 4px;
+  box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.4), 0 4px 0 rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease, border-color 0.2s ease;
   z-index: 1;
-  padding: 8px;
-}
-
-.board-cell:hover {
-  background-color: var(--cell-hover);
-  border-color: var(--accent-yellow);
+  padding: 16px 4px 4px 4px;
+  overflow: visible;
 }
 
 .board-cell-number {
   position: absolute;
-  top: 6px;
-  left: 8px;
-  font-size: 0.95rem;
+  top: 4px;
+  left: 6px;
+  font-size: 0.9rem;
   font-weight: 800;
-  color: var(--color-text-dim);
-  opacity: 0.65;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  color: rgba(255, 255, 255, 0.65);
+  text-shadow: 1px 1px 0 var(--comic-border);
+  pointer-events: none;
+  z-index: 2;
 }
 
 .board-cell-start {
-  background: linear-gradient(135deg, #166534 0%, #14532d 100%) !important;
-  border: 3.5px solid #86efac !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 26px rgba(134, 239, 172, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.4) !important;
+  background: linear-gradient(135deg, #00f58d 0%, #00a859 100%) !important;
+  border-color: #005229 !important;
 }
 
 .board-cell-finish {
-  background: linear-gradient(135deg, #b45309 0%, #78350f 100%) !important;
-  border: 3.5px solid var(--accent-yellow) !important;
-  color: #fffbeb !important;
-  box-shadow: 0 0 32px var(--accent-yellow-glow), inset 0 2px 0 rgba(255, 255, 255, 0.6) !important;
+  background: linear-gradient(135deg, #ff007f 0%, #b30059 100%) !important;
+  border-color: #660033 !important;
 }
 
 .board-cell-active {
-  border: 3.5px solid #ffffff !important;
-  box-shadow: 0 0 30px rgba(255, 255, 255, 0.85), inset 0 0 12px rgba(255, 255, 255, 0.3) !important;
-  background-color: var(--bg-olive-light) !important;
+  border: 4px dashed var(--accent-yellow) !important;
+  background-color: #5c32a0 !important;
+  transform: scale(1.02);
 }
 
 /* ==========================================================================
-   ФИГУРКИ ИГРОКОВ (УВЕЛИЧЕННЫЕ И СЛОЖНЫЕ ТЕЛА)
+   МУЛЬТЯШНЫЕ ФИГУРКИ (БОЛЬШИЕ, СМЕШНЫЕ, BOBBLEHEAD ЭФФЕКТ)
    ========================================================================== */
 
 .pawn-wrapper {
   position: relative;
-  width: 90px;
-  height: 110px;
+  width: 82px;
+  height: 98px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.85));
   z-index: 20;
   pointer-events: auto;
   transform-origin: bottom center;
+  flex-shrink: 1;
 }
 
-/* Большая голова с селфи и рамкой */
+/* Огромная мультяшная голова Bobblehead */
 .pawn-selfie-head {
-  width: 72px;
-  height: 72px;
+  width: 76px;
+  height: 76px;
   border-radius: var(--radius-round);
-  border: 4.5px solid var(--player-color, var(--accent-yellow));
-  box-shadow: 0 0 22px var(--player-color, var(--accent-yellow)), 0 6px 12px rgba(0, 0, 0, 0.7);
-  background-color: var(--bg-olive-dark);
+  border: 5px solid var(--comic-border);
+  outline: 4px solid var(--player-color, var(--accent-yellow));
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+  background-color: #ffffff;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   z-index: 25;
   margin-bottom: -16px;
   transform-origin: bottom center;
-  animation: headBob 2.8s ease-in-out infinite;
+  animation: headBob 2.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -508,60 +531,61 @@ p, span, label {
   object-fit: cover;
 }
 
-/* Сложное конусообразное тело "пешки-ракеты" */
+/* Забавное маленькое пузатое тело-пешка */
 .pawn-body {
-  width: 60px;
-  height: 52px;
-  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.45) 0%, transparent 60%),
-              var(--player-color, var(--accent-yellow));
-  clip-path: polygon(50% 0%, 90% 88%, 100% 100%, 0% 100%, 10% 88%);
+  width: 44px;
+  height: 38px;
+  background: var(--player-color, var(--accent-yellow));
+  border: 4px solid var(--comic-border);
+  border-radius: 20px 20px 14px 14px;
   position: relative;
   z-index: 22;
-  box-shadow: inset 0 -6px 10px rgba(0, 0, 0, 0.6), inset 0 4px 6px rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.35), 0 6px 0 rgba(0, 0, 0, 0.25);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
 }
 
-/* Ремень / пряжка пешки */
+/* Галстук-бабочка или забавный воротничок */
 .pawn-body::before {
   content: '';
   position: absolute;
-  bottom: 8px;
-  width: 42px;
+  top: 2px;
+  width: 16px;
   height: 8px;
-  background: #11180f;
+  background: #ffffff;
+  border: 2px solid var(--comic-border);
   border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(255, 255, 255, 0.3);
-}
-
-/* Медаль или пуговица */
-.pawn-body::after {
-  content: '';
-  position: absolute;
-  bottom: 9px;
-  width: 10px;
-  height: 6px;
-  background: var(--accent-yellow);
-  border-radius: 2px;
 }
 
 /* ==========================================================================
-   СМЕШНЫЕ АНИМАЦИИ ПЕРЕМЕЩЕНИЯ И ПРЫЖКОВ
+   МУЛЬТЯШНЫЕ АНИМАЦИИ (BOBBLEHEAD & ПРЫЖКИ)
    ========================================================================== */
 
-@keyframes comical-jump {
+@keyframes headBob {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(10deg) scale(1.08) translateY(-4px);
+  }
+  75% {
+    transform: rotate(-10deg) scale(0.95) translateY(2px);
+  }
+}
+
+@keyframes pawnJump {
   0% {
     transform: translateY(0) scale(1, 1);
   }
-  30% {
-    transform: translateY(12px) scale(1.3, 0.7);
+  25% {
+    transform: translateY(10px) scale(1.35, 0.65);
   }
   50% {
-    transform: translateY(-70px) scale(0.85, 1.25);
+    transform: translateY(-80px) scale(0.75, 1.35) rotate(10deg);
   }
   75% {
-    transform: translateY(-20px) scale(1.05, 0.95);
+    transform: translateY(-20px) scale(1.15, 0.85) rotate(-5deg);
   }
   100% {
     transform: translateY(0) scale(1, 1);
@@ -570,151 +594,89 @@ p, span, label {
 
 .pawn-jumping,
 .pawn-walking {
-  animation: comical-jump 0.55s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
-}
-
-@keyframes headBob {
-  0%, 100% { transform: rotate(0deg) translateY(-8%); }
-  25% { transform: rotate(8deg) translateY(-14%); }
-  75% { transform: rotate(-8deg) translateY(-6%); }
-}
-
-@keyframes pulseGreen {
-  0% { box-shadow: 0 0 16px rgba(163, 230, 53, 0.4); }
-  100% { box-shadow: 0 0 36px rgba(163, 230, 53, 0.9), inset 0 0 14px rgba(255, 255, 255, 0.5); }
+  animation: pawnJump 0.5s cubic-bezier(0.28, 0.84, 0.42, 1) forwards !important;
 }
 
 /* ==========================================================================
-   КОМПАКТНАЯ ПЛАШКА ХОДА НАД ПОЛЕМ (.MOVE-INFO-TOAST)
-   ========================================================================== */
-
-.move-info-toast {
-  position: absolute;
-  top: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  background: rgba(23, 33, 21, 0.88);
-  border: 2.5px solid var(--accent-yellow);
-  border-radius: 24px;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.75), 0 0 25px var(--accent-yellow-glow);
-  padding: 12px 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  color: var(--color-white);
-  font-size: 1.35rem;
-  font-weight: 900;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-  animation: slideDownToast 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-  pointer-events: none;
-}
-
-@keyframes slideDownToast {
-  from {
-    transform: translate(-50%, -100%);
-    opacity: 0;
-  }
-  to {
-    transform: translate(-50%, 0);
-    opacity: 1;
-  }
-}
-
-/* ==========================================================================
-   ИНДИКАТОР ТАЙМЕРА (TIMER BAR)
+   ТАЙМЕР И ИНДИКАТОРЫ
    ========================================================================== */
 
 .timer-track,
 .timer-container {
   width: 100%;
-  height: 18px;
-  background-color: #10170f;
+  height: 20px;
+  background-color: #ffffff;
   border-radius: var(--radius-round);
-  border: 2px solid var(--bg-olive-medium);
+  border: var(--comic-border-thin) solid var(--comic-border);
   overflow: hidden;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
-  margin: 10px 0;
+  box-shadow: 0 4px 0 var(--comic-border);
+  margin: 6px 0;
   position: relative;
 }
 
 .timer-bar {
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #84cc16 0%, var(--accent-yellow) 55%, var(--accent-red) 100%);
-  box-shadow: 0 0 20px var(--accent-yellow-glow);
+  background: linear-gradient(90deg, var(--accent-green) 0%, var(--accent-yellow) 50%, var(--accent-red) 100%);
   border-radius: var(--radius-round);
   transition: width 0.1s linear;
 }
 
-/* ==========================================================================
-   ВЫБОР ЦВЕТОВ И СЕЛФИ В ЛОББИ
-   ========================================================================== */
-
-.color-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.move-info-toast {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: #ffffff;
+  border: var(--comic-border-width) solid var(--comic-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 0 var(--comic-border), 0 16px 30px rgba(0,0,0,0.4);
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
-  width: 100%;
+  color: var(--color-dark);
+  font-size: 1.25rem;
+  font-weight: 800;
+  animation: toonSlideIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  pointer-events: none;
 }
 
-.color-select-btn {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-round);
-  border: 3.5px solid transparent;
-  cursor: pointer;
-  transition: transform 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+@keyframes toonSlideIn {
+  from { transform: translate(-50%, -120%) scale(0.6); }
+  to { transform: translate(-50%, 0) scale(1); }
 }
 
-.color-select-btn:hover:not(:disabled) {
-  transform: scale(1.15);
-  border-color: #ffffff;
-}
-
-.color-select-btn.selected {
-  border-color: #ffffff !important;
-  box-shadow: 0 0 20px #ffffff;
-  transform: scale(1.18);
-}
-
-/* Заблокированные цвета */
-.color-select-btn:disabled,
-.color-select-btn[disabled] {
-  opacity: 0.25 !important;
-  cursor: not-allowed !important;
-  transform: scale(0.9) !important;
-  filter: grayscale(80%) !important;
-  border-color: #4b5563 !important;
-}
+/* ==========================================================================
+   КАМЕРА И СЕЛФИ МОДАЛКА (БЕЗ МЕРЦАНИЯ И ЧЕРНОГО ЭКРАНА)
+   ========================================================================== */
 
 .camera-modal {
   position: fixed;
   inset: 0;
-  background: rgba(10, 15, 9, 0.92);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: rgba(20, 13, 33, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   z-index: 999;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
 }
 
 .camera-video-preview {
-  width: 250px;
-  height: 250px;
+  width: 260px;
+  height: 260px;
   border-radius: var(--radius-round);
   border: 6px solid var(--accent-yellow);
-  box-shadow: 0 0 35px var(--accent-yellow-glow);
+  outline: var(--comic-border-width) solid var(--comic-border);
+  box-shadow: 0 12px 0 var(--comic-border), 0 20px 30px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   position: relative;
-  background: #080c07;
+  background: #2b1842; /* Приятный фон вместо черного мигания */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -726,80 +688,74 @@ p, span, label {
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1);
+  display: block;
 }
 
 /* ==========================================================================
-   МЕДИА-ЗАПРОСЫ И АДАПТИВНОСТЬ
+   АДАПТИВНОСТЬ ПОД РАЗНЫЕ РАЗМЕРЫ ЭКРАНОВ
    ========================================================================== */
 
-@media (max-width: 1024px) {
-  .pawn-wrapper {
-    width: 72px;
-    height: 90px;
-  }
-  .pawn-selfie-head {
-    width: 58px;
-    height: 58px;
-  }
-  .pawn-body {
-    width: 48px;
-    height: 42px;
-  }
-}
-
 @media (max-width: 768px) {
-  .board-grid {
-    gap: 6px;
-    padding: 8px;
+  :root {
+    --comic-border-width: 3px;
+    --comic-border-thin: 2px;
   }
 
-  .board-cell {
-    font-size: 1rem;
-    padding: 4px;
+  .mobile-container {
+    gap: 8px;
+    padding: 8px 10px;
   }
 
-  .board-cell-number {
-    font-size: 0.75rem;
-    top: 3px;
-    left: 4px;
+  .glass-card {
+    padding: 14px;
+    border-radius: var(--radius-lg);
   }
 
-  .pawn-wrapper {
-    width: 50px;
-    height: 64px;
-  }
-
-  .pawn-selfie-head {
-    width: 42px;
-    height: 42px;
-    border-width: 3px;
-  }
-
-  .pawn-body {
-    width: 34px;
-    height: 30px;
+  .question-image {
+    max-height: 120px;
+    margin: 4px auto 8px auto;
   }
 
   .quiz-btn {
-    min-height: 72px;
-    padding: 14px 16px;
+    min-height: 52px;
+    padding: 8px 12px;
+    gap: 10px;
   }
 
   .quiz-btn-letter {
-    width: 42px;
-    height: 42px;
-    min-width: 42px;
-    font-size: 1.2rem;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    font-size: 1.15rem;
+    border-radius: 8px;
   }
 
   .quiz-btn-text {
-    font-size: 1.05rem;
+    font-size: 0.98rem;
   }
 
-  .move-info-toast {
-    font-size: 1.05rem;
-    padding: 8px 20px;
-    width: 90%;
-    top: 14px;
+  .primary-btn {
+    font-size: 1.1rem;
+    padding: 10px 20px;
+  }
+
+  /* Масштабирование пешек на мобилках */
+  .pawn-wrapper {
+    width: 48px;
+    height: 60px;
+  }
+
+  .pawn-selfie-head {
+    width: 44px;
+    height: 44px;
+    border-width: 3px;
+    outline-width: 2px;
+    margin-bottom: -10px;
+  }
+
+  .pawn-body {
+    width: 28px;
+    height: 24px;
+    border-width: 2px;
   }
 }

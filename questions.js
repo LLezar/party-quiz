@@ -1,13 +1,14 @@
 // filename: questions.js
 /**
  * ИНСТРУКЦИЯ ПО РЕДАКТИРОВАНИЮ:
- * 1. Добавляйте категории в объект window.QuestionBank.
- * 2. Каждая категория — это массив объектов с вопросами.
+ * 1. Чтобы добавить категорию, добавьте объект в массив `categories` (id, name, icon).
+ * 2. В объекте `items` создайте ключ с этим же id и массив объектов вопросов.
  * 3. Структура вопроса:
- *    - id: уникальный строковый идентификатор.
- *    - q (или text): текст вопроса.
- *    - options: массив из 4 строк с вариантами ответа.
- *    - correct (или correctIndex): индекс правильного ответа (0, 1, 2 или 3).
+ *    - id: уникальный идентификатор.
+ *    - text: текст вопроса.
+ *    - imageUrl: (опционально) ссылка на картинку.
+ *    - options: массив из 4 вариантов ответа.
+ *    - correctIndex: число от 0 до 3.
  */
 
 window.QuestionBank = {
@@ -17,7 +18,12 @@ window.QuestionBank = {
     { id: "science", name: "Наука и космос", icon: "🚀" },
     { id: "geography", name: "География", icon: "🌍" },
     { id: "music", name: "Музыка и поп-культура", icon: "🎵" },
-    { id: "facts", name: "Странные факты", icon: "💡" }
+    { id: "facts", name: "Странные факты", icon: "💡" },
+    { id: "landmarks", name: "Достопримечательности", icon: "🗼" },
+    { id: "celebs", name: "Знаменитости", icon: "⭐" },
+    { id: "cartoons", name: "Мультфильмы", icon: "🎈" },
+    { id: "art", name: "Искусство", icon: "🎨" },
+    { id: "history", name: "История", icon: "📜" }
   ],
 
   items: {
@@ -80,6 +86,56 @@ window.QuestionBank = {
       { id: "str6", text: "Могут ли пингвины летать?", options: ["Да", "Нет", "Только молодые", "Только в воде"], correctIndex: 1 },
       { id: "str7", text: "Какое насекомое живет дольше всех?", options: ["Муравей", "Муха", "Бабочка", "Комар"], correctIndex: 0 },
       { id: "str8", text: "Кто спит с открытыми глазами?", options: ["Рыбы", "Птицы", "Змеи", "Лягушки"], correctIndex: 0 }
+    ],
+    landmarks: [
+      { id: "land1", text: "Что это за здание?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Colosseum_in_Rome%2C_Italy_-_April_2007.jpg/640px-Colosseum_in_Rome%2C_Italy_-_April_2007.jpg", options: ["Колизей", "Пантеон", "Арена Вероны", "Цирк Максимус"], correctIndex: 0 },
+      { id: "land2", text: "Где находится этот мост?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/GoldenGateBridge-001.jpg/640px-GoldenGateBridge-001.jpg", options: ["Лондон", "Сан-Франциско", "Сидней", "Нью-Йорк"], correctIndex: 1 },
+      { id: "land3", text: "Как называется этот монумент?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Statue_of_Liberty_NY.jpg/320px-Statue_of_Liberty_NY.jpg", options: ["Статуя Свободы", "Родина-мать", "Христос-Искупитель", "Колосс Родосский"], correctIndex: 0 },
+      { id: "land4", text: "В какой стране находится этот храм?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/Angkor_Wat_Temple.jpg/640px-Angkor_Wat_Temple.jpg", options: ["Индия", "Камбоджа", "Таиланд", "Вьетнам"], correctIndex: 1 },
+      { id: "land5", text: "Что это за башня?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Pisa_Toren.jpg/320px-Pisa_Toren.jpg", options: ["Пизанская башня", "Биг-Бен", "Эйфелева башня", "Бурдж-Халифа"], correctIndex: 0 },
+      { id: "land6", text: "Где находится этот оперный театр?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Sydney_Opera_House_-_2005-12-31.jpg/640px-Sydney_Opera_House_-_2005-12-31.jpg", options: ["Сидней", "Вена", "Париж", "Торонто"], correctIndex: 0 },
+      { id: "land7", text: "Что это за место?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Taj_Mahal_in_Agra%2C_India.jpg/640px-Taj_Mahal_in_Agra%2C_India.jpg", options: ["Тадж-Махал", "Мечеть Аль-Харам", "Дворец Дожей", "Альгамбра"], correctIndex: 0 },
+      { id: "land8", text: "Где находится эта стена?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/The_Great_Wall_of_China_at_Jinshanling-edit.jpg/640px-The_Great_Wall_of_China_at_Jinshanling-edit.jpg", options: ["Монголия", "Китай", "Корея", "Япония"], correctIndex: 1 }
+    ],
+    celebs: [
+      { id: "cel1", text: "Кто этот актер?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Keanu_Reeves_2013.jpg/400px-Keanu_Reeves_2013.jpg", options: ["Брэд Питт", "Киану Ривз", "Том Хэнкс", "Николас Кейдж"], correctIndex: 1 },
+      { id: "cel2", text: "Кто эта певица?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Taylor_Swift_at_the_2023_MTV_Video_Music_Awards.png/400px-Taylor_Swift_at_the_2023_MTV_Video_Music_Awards.png", options: ["Ариана Гранде", "Тейлор Свифт", "Селена Гомес", "Кэти Перри"], correctIndex: 1 },
+      { id: "cel3", text: "Кто этот человек?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/34/Elon_Musk_Royal_Society_%28crop2%29.jpg/400px-Elon_Musk_Royal_Society_%28crop2%29.jpg", options: ["Билл Гейтс", "Илон Маск", "Джефф Безос", "Марк Цукерберг"], correctIndex: 1 },
+      { id: "cel4", text: "Кто этот футболист?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cristiano_Ronaldo_2018.jpg/400px-Cristiano_Ronaldo_2018.jpg", options: ["Месси", "Роналду", "Мбаппе", "Неймар"], correctIndex: 1 },
+      { id: "cel5", text: "Кто эта актриса?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bf/Angelina_Jolie_at_the_2017_Toronto_International_Film_Festival.jpg/400px-Angelina_Jolie_at_the_2017_Toronto_International_Film_Festival.jpg", options: ["Скарлетт Йоханссон", "Анджелина Джоли", "Дженнифер Энистон", "Марго Робби"], correctIndex: 1 },
+      { id: "cel6", text: "Кто этот режиссер?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Quentin_Tarantino_by_Gage_Skidmore.jpg/400px-Quentin_Tarantino_by_Gage_Skidmore.jpg", options: ["Кристофер Нолан", "Квентин Тарантино", "Мартин Скорсезе", "Стивен Спилберг"], correctIndex: 1 },
+      { id: "cel7", text: "Кто этот музыкант?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Freddie_Mercury_1975.jpg/400px-Freddie_Mercury_1975.jpg", options: ["Дэвид Боуи", "Фредди Меркьюри", "Элтон Джон", "Мик Джаггер"], correctIndex: 1 },
+      { id: "cel8", text: "Кто это?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Albert_Einstein_1921.jpg/400px-Albert_Einstein_1921.jpg", options: ["Исаак Ньютон", "Альберт Эйнштейн", "Никола Тесла", "Стивен Хокинг"], correctIndex: 1 }
+    ],
+    cartoons: [
+      { id: "cart1", text: "Как зовут этого персонажа?", imageUrl: "https://upload.wikimedia.org/wikipedia/en/thumb/0/02/Homer_Simpson_2006.png/220px-Homer_Simpson_2006.png", options: ["Барт", "Гомер", "Нед", "Лиза"], correctIndex: 1 },
+      { id: "cart2", text: "Из какого мультфильма этот персонаж?", imageUrl: "https://upload.wikimedia.org/wikipedia/en/thumb/d/d3/Shrek_character.png/220px-Shrek_character.png", options: ["Мадагаскар", "Шрек", "Ледниковый период", "Кунг-фу Панда"], correctIndex: 1 },
+      { id: "cart3", text: "Как зовут этого героя?", imageUrl: "https://upload.wikimedia.org/wikipedia/en/thumb/f/f0/Mickey_Mouse.svg/220px-Mickey_Mouse.svg.png", options: ["Дональд Дак", "Микки Маус", "Гуфи", "Плуто"], correctIndex: 1 },
+      { id: "cart4", text: "Кто это?", imageUrl: "https://upload.wikimedia.org/wikipedia/en/thumb/5/5a/SpongeBob_SquarePants_character.svg/200px-SpongeBob_SquarePants_character.svg.png", options: ["Патрик", "Сквидвард", "Губка Боб", "Крабс"], correctIndex: 2 },
+      { id: "cart5", text: "Как зовут этого покемона?", imageUrl: "https://upload.wikimedia.org/wikipedia/en/thumb/3/39/Pok%C3%A9mon_Pikachu_art.png/220px-Pok%C3%A9mon_Pikachu_art.png", options: ["Бульбазавр", "Пикачу", "Чармандер", "Сквиртл"], correctIndex: 1 },
+      { id: "cart6", text: "Кто это?", imageUrl: "https://upload.wikimedia.org/wikipedia/en/thumb/d/d0/Minion_Gru.png/220px-Minion_Gru.png", options: ["Миньон", "Грю", "Доктор Нефарио", "Вектор"], correctIndex: 0 },
+      { id: "cart7", text: "Из какого мультфильма персонаж?", imageUrl: "https://upload.wikimedia.org/wikipedia/en/thumb/2/27/Wall-E.jpg/220px-Wall-E.jpg", options: ["ВАЛЛ-И", "Роботы", "Суперсемейка", "Тачки"], correctIndex: 0 },
+      { id: "cart8", text: "Как зовут эту принцессу?", imageUrl: "https://upload.wikimedia.org/wikipedia/en/thumb/f/f0/Elsa_%28Disney%29.png/220px-Elsa_%28Disney%29.png", options: ["Анна", "Эльза", "Рапунцель", "Ариэль"], correctIndex: 1 }
+    ],
+    art: [
+      { id: "art1", text: "Кто написал эту картину?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg/640px-Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg", options: ["Моне", "Ван Гог", "Пикассо", "Дали"], correctIndex: 1 },
+      { id: "art2", text: "Как называется эта картина?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/400px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg", options: ["Дама с горностаем", "Мона Лиза", "Тайная вечеря", "Мадонна Литта"], correctIndex: 1 },
+      { id: "art3", text: "Кто автор этой картины?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Garn_The_Scream.jpg/400px-Garn_The_Scream.jpg", options: ["Эдвард Мунк", "Пабло Пикассо", "Сальвадор Дали", "Анри Матисс"], correctIndex: 0 },
+      { id: "art4", text: "В каком стиле написана эта работа?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Salvador_Dal%C3%AD%2C_1931%2C_La_persist%C3%A8ncia_d%27una_mem%C3%B2ria.jpg/640px-Salvador_Dal%C3%AD%2C_1931%2C_La_persist%C3%A8ncia_d%27una_mem%C3%B2ria.jpg", options: ["Импрессионизм", "Сюрреализм", "Кубизм", "Реализм"], correctIndex: 1 },
+      { id: "art5", text: "Кто это нарисовал?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Gustav_Klimt_-_The_Kiss_-_Google_Art_Project.jpg/400px-Gustav_Klimt_-_The_Kiss_-_Google_Art_Project.jpg", options: ["Густав Климт", "Клод Моне", "Василий Кандинский", "Марк Шагал"], correctIndex: 0 },
+      { id: "art6", text: "Как называется эта картина?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/The_Birth_of_Venus.jpg/640px-The_Birth_of_Venus.jpg", options: ["Рождение Венеры", "Весна", "Три грации", "Мадонна"], correctIndex: 0 },
+      { id: "art7", text: "Кто художник этой работы?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Johannes_Vermeer_-_Girl_with_a_Pearl_Earring_-_Google_Art_Project.jpg/400px-Johannes_Vermeer_-_Girl_with_a_Pearl_Earring_-_Google_Art_Project.jpg", options: ["Рембрандт", "Ян Вермеер", "Питер Рубенс", "Франс Халс"], correctIndex: 1 },
+      { id: "art8", text: "Кто это изобразил?", imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Piet_Mondrian%2C_1930_-_Composition_with_blue_yellow_black_and_red.jpg/400px-Piet_Mondrian%2C_1930_-_Composition_with_blue_yellow_black_and_red.jpg", options: ["Пит Мондриан", "Казимир Малевич", "Марсель Дюшан", "Жоан Миро"], correctIndex: 0 }
+    ],
+    history: [
+      { id: "hist1", text: "В каком году началась Вторая мировая война?", options: ["1938", "1939", "1940", "1941"], correctIndex: 1 },
+      { id: "hist2", text: "Кто был первым президентом США?", options: ["Авраам Линкольн", "Джордж Вашингтон", "Томас Джефферсон", "Бенджамин Франклин"], correctIndex: 1 },
+      { id: "hist3", text: "Как называлась древняя египетская письменность?", options: ["Клинопись", "Иероглифы", "Латынь", "Санскрит"], correctIndex: 1 },
+      { id: "hist4", text: "Кто открыл Америку в 1492 году?", options: ["Васко да Гама", "Христофор Колумб", "Фернан Магеллан", "Америго Веспуччи"], correctIndex: 1 },
+      { id: "hist5", text: "Какая империя была самой большой в истории?", options: ["Римская", "Британская", "Монгольская", "Османская"], correctIndex: 1 },
+      { id: "hist6", text: "Кто был лидером СССР во время Великой Отечественной войны?", options: ["Ленин", "Сталин", "Хрущев", "Брежнев"], correctIndex: 1 },
+      { id: "hist7", text: "Какое событие ознаменовало начало Французской революции?", options: ["Взятие Бастилии", "Казнь короля", "Поход на Версаль", "Принятие Декларации"], correctIndex: 0 },
+      { id: "hist8", text: "Как звали последнего русского царя?", options: ["Александр III", "Николай II", "Петр I", "Павел I"], correctIndex: 1 }
     ]
   },
 
