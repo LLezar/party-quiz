@@ -19,6 +19,9 @@ const getGridPos = (index) => {
 const EMOJI_AVATARS = ['😎', '🤪', '🤡', '👽', '🤖', '😺', '🤠', '🦊'];
 const PLAYER_COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FFCC00', '#AF52DE', '#FF9500'];
 
+// Проверка, что ответ действительно выбран (защита от undefined в Firebase)
+const hasValidAnswer = (val) => typeof val === 'number' && val >= 0 && val <= 3;
+
 // Фигурка игрока на доске
 const Pawn = ({ color, selfie, isWalking, position }) => {
     const pos = getGridPos(position || 0);
@@ -74,18 +77,19 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
     const handleTake = async () => {
         try {
             if (window.captureSelfie && videoRef.current) {
-                const base64 = window.captureSelfie(videoRef.current);
+                const base64 = await window.captureSelfie(videoRef.current);
                 setPhoto(base64);
             } else if (window.GameSync?.takePhoto && videoRef.current) {
-                const base64 = window.GameSync.takePhoto(videoRef.current);
+                const canvas = document.createElement('canvas');
+                const base64 = await window.GameSync.takePhoto(videoRef.current, canvas);
                 setPhoto(base64);
             } else {
                 const canvas = document.createElement('canvas');
-                canvas.width = 320;
-                canvas.height = 320;
+                canvas.width = 120;
+                canvas.height = 120;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(videoRef.current, 0, 0, 320, 320);
-                setPhoto(canvas.toDataURL('image/webp', 0.8));
+                ctx.drawImage(videoRef.current, 0, 0, 120, 120);
+                setPhoto(canvas.toDataURL('image/jpeg', 0.65));
             }
         } catch (e) {
             console.error(e);
@@ -128,7 +132,7 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
 
 // Начальный экран
 const StartScreen = () => {
-    const [dbUrl, setDbUrl] = useState(localStorage.getItem('firebaseDbUrl') || '');
+    const [dbUrl, setDbUrl] = useState(localStorage.getItem('firebaseDbUrl') || 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app');
 
     const handleHost = useCallback(() => {
         localStorage.setItem('firebaseDbUrl', dbUrl);
@@ -181,6 +185,8 @@ const TVApp = ({ roomId, dbUrl }) => {
 
     const roundCorrectRef = useRef({}); 
     const currentQuestionsRef = useRef([]);
+    const resultTransitionLockRef = useRef(false);
+    const nextQuestionTimeoutRef = useRef(null);
 
     const baseUrl = window.location.origin + window.location.pathname;
     const joinUrl = `${baseUrl}?role=player&room=${roomId}${dbUrl ? `&db=${encodeURIComponent(dbUrl)}` : ''}`;
@@ -207,6 +213,9 @@ const TVApp = ({ roomId, dbUrl }) => {
         } catch (err) {
             console.error("Init host sync error", err);
         }
+        return () => {
+            if (nextQuestionTimeoutRef.current) clearTimeout(nextQuestionTimeoutRef.current);
+        };
     }, [roomId, dbUrl]);
 
     // Синхронизация визуальных позиций игроков вне фазы шагов
@@ -240,23 +249,27 @@ const TVApp = ({ roomId, dbUrl }) => {
 
     // Старт нового раунда
     const startNewRound = () => {
+        if (nextQuestionTimeoutRef.current) clearTimeout(nextQuestionTimeoutRef.current);
+        resultTransitionLockRef.current = false;
+
         const categories = window.QuestionBank?.getCategories ? window.QuestionBank.getCategories(3) : [
             { id: 'cinema', name: 'Кино', icon: '🎬' },
             { id: 'games', name: 'Игры', icon: '🎮' },
             { id: 'music', name: 'Музыка', icon: '🎵' }
         ];
 
-        const updatedPlayers = { ...gameState.players };
+        const updatedPlayers = JSON.parse(JSON.stringify(gameState.players || {}));
         roundCorrectRef.current = {};
         Object.keys(updatedPlayers).forEach(pid => {
             updatedPlayers[pid].currentVote = null;
-            updatedPlayers[pid].currentAnswer = null;
+            updatedPlayers[pid].currentAnswer = -1;
+            updatedPlayers[pid].answeredQIndex = -1;
             roundCorrectRef.current[pid] = 0;
         });
 
         window.GameSync.updateState({
             status: 'category_vote',
-            timer: 10,
+            timer: 15,
             categoriesToVote: categories,
             currentRound: {
                 categoryId: null,
@@ -275,15 +288,23 @@ const TVApp = ({ roomId, dbUrl }) => {
         let timerId;
 
         if (status === 'category_vote') {
-            if (timer > 0) {
+            const playerValues = Object.values(players || {});
+            const allVoted = playerValues.length > 0 && playerValues.every(p => typeof p.currentVote === 'string' && p.currentVote.length > 0);
+
+            if (timer > 0 && !allVoted) {
                 timerId = setTimeout(() => window.GameSync.updateState({ timer: timer - 1 }), 1000);
-            } else if (timer === 0) {
+            } else {
                 handleVoteFinished();
             }
         } else if (status === 'round_active') {
-            if (currentRound?.phase === 'answering') {
-                const totalPlayers = Object.keys(players || {}).length;
-                const answeredPlayers = Object.values(players || {}).filter(p => p.currentAnswer !== null).length;
+            if (currentRound?.phase === 'answering' && !resultTransitionLockRef.current) {
+                const qIdx = currentRound.questionIndex || 0;
+                const playerValues = Object.values(players || {});
+                const totalPlayers = playerValues.length;
+                // Считаем только ответы, которые являются числом 0..3 И относятся к текущему индексу вопроса
+                const answeredPlayers = playerValues.filter(
+                    p => hasValidAnswer(p.currentAnswer) && (p.answeredQIndex === undefined || p.answeredQIndex === qIdx)
+                ).length;
                 const allAnswered = totalPlayers > 0 && answeredPlayers >= totalPlayers;
 
                 if (timer > 0 && !allAnswered) {
@@ -295,7 +316,7 @@ const TVApp = ({ roomId, dbUrl }) => {
         }
 
         return () => clearTimeout(timerId);
-    }, [gameState?.status, gameState?.timer, gameState?.currentRound?.phase, gameState?.players]);
+    }, [gameState?.status, gameState?.timer, gameState?.currentRound?.phase, gameState?.currentRound?.questionIndex, gameState?.players]);
 
     // Завершение голосования за категорию
     const handleVoteFinished = () => {
@@ -304,7 +325,7 @@ const TVApp = ({ roomId, dbUrl }) => {
             if (p.currentVote) votes[p.currentVote] = (votes[p.currentVote] || 0) + 1;
         });
 
-        let chosenCat = gameState.categoriesToVote[0]?.id || 'cinema';
+        let chosenCat = gameState.categoriesToVote?.[0]?.id || 'cinema';
         let maxCount = -1;
         for (const [cat, count] of Object.entries(votes)) {
             if (count > maxCount) {
@@ -318,11 +339,14 @@ const TVApp = ({ roomId, dbUrl }) => {
             : [];
         currentQuestionsRef.current = questions;
 
-        const updatedPlayers = { ...gameState.players };
+        const updatedPlayers = JSON.parse(JSON.stringify(gameState.players || {}));
         Object.keys(updatedPlayers).forEach(pid => {
-            updatedPlayers[pid].currentAnswer = null;
+            updatedPlayers[pid].currentAnswer = -1;
+            updatedPlayers[pid].answeredQIndex = -1;
             roundCorrectRef.current[pid] = 0;
         });
+
+        resultTransitionLockRef.current = false;
 
         window.GameSync.updateState({
             status: 'round_active',
@@ -337,14 +361,18 @@ const TVApp = ({ roomId, dbUrl }) => {
         });
     };
 
-    // Показ правильного ответа (фаза showing_result ровно на 5 секунд)
+    // Показ правильного ответа (фаза showing_result ровно на 4 секунды)
     const handleShowResultPhase = () => {
-        const currentQIndex = gameState.currentRound.questionIndex;
+        if (resultTransitionLockRef.current) return;
+        resultTransitionLockRef.current = true;
+
+        const currentQIndex = gameState.currentRound?.questionIndex || 0;
         const currentQ = currentQuestionsRef.current[currentQIndex];
-        const correctIndex = currentQ?.correctIndex ?? 0;
+        const correctIndex = currentQ?.correctIndex ?? currentQ?.correct ?? 0;
 
         Object.entries(gameState.players || {}).forEach(([pid, p]) => {
-            if (p.currentAnswer === correctIndex) {
+            const isCurrentQAnswer = p.answeredQIndex === undefined || p.answeredQIndex === currentQIndex;
+            if (isCurrentQAnswer && p.currentAnswer === correctIndex) {
                 roundCorrectRef.current[pid] = (roundCorrectRef.current[pid] || 0) + 1;
             }
         });
@@ -352,44 +380,50 @@ const TVApp = ({ roomId, dbUrl }) => {
         window.GameSync.updateState({
             currentRound: {
                 ...gameState.currentRound,
+                questionIndex: currentQIndex,
                 phase: 'showing_result'
             }
         });
 
-        setTimeout(() => {
+        if (nextQuestionTimeoutRef.current) clearTimeout(nextQuestionTimeoutRef.current);
+        nextQuestionTimeoutRef.current = setTimeout(async () => {
             const nextQIndex = currentQIndex + 1;
             if (nextQIndex < 4) {
-                const resetAnswersPlayers = { ...gameState.players };
+                const latestPlayers = window.GameSync.currentState?.players || gameState.players || {};
+                const resetAnswersPlayers = JSON.parse(JSON.stringify(latestPlayers));
                 Object.keys(resetAnswersPlayers).forEach(pid => {
-                    resetAnswersPlayers[pid].currentAnswer = null;
+                    resetAnswersPlayers[pid].currentAnswer = -1;
+                    resetAnswersPlayers[pid].answeredQIndex = -1;
                 });
 
-                window.GameSync.updateState({
+                await window.GameSync.updateState({
                     timer: 15,
                     currentRound: {
-                        ...gameState.currentRound,
+                        categoryId: gameState.currentRound?.categoryId,
                         questionIndex: nextQIndex,
                         phase: 'answering',
                         answersCount: 0
                     },
                     players: resetAnswersPlayers
                 });
+                resultTransitionLockRef.current = false;
             } else {
                 executeRoundMovement();
             }
-        }, 5000);
+        }, 4000);
     };
 
     // Пошаговое движение фишек на количество правильных ответов
     const executeRoundMovement = async () => {
         setIsAnimatingRoundMoves(true);
 
-        window.GameSync.updateState({
+        await window.GameSync.updateState({
             status: 'round_results',
             timer: 10
         });
 
-        const playersCopy = JSON.parse(JSON.stringify(gameState.players || {}));
+        const latestPlayers = window.GameSync.currentState?.players || gameState.players || {};
+        const playersCopy = JSON.parse(JSON.stringify(latestPlayers));
         const playerIds = Object.keys(playersCopy);
 
         for (const pid of playerIds) {
@@ -411,7 +445,8 @@ const TVApp = ({ roomId, dbUrl }) => {
 
             playersCopy[pid].position = currentPos;
             playersCopy[pid].score = (playersCopy[pid].score || 0) + steps;
-            playersCopy[pid].currentAnswer = null;
+            playersCopy[pid].currentAnswer = -1;
+            playersCopy[pid].answeredQIndex = -1;
         }
 
         // Запись в Firebase один раз в конце раунда
@@ -439,6 +474,7 @@ const TVApp = ({ roomId, dbUrl }) => {
     const { status, timer, categoriesToVote, currentRound, players, winnerId } = gameState;
     const playersList = Object.values(players || {});
     const currentQ = currentQuestionsRef.current[currentRound?.questionIndex] || null;
+    const currentQCorrectIndex = currentQ ? (currentQ.correctIndex ?? currentQ.correct ?? 0) : 0;
 
     return (
         <div className="tv-container relative w-screen h-screen flex flex-col p-0 m-0 overflow-hidden">
@@ -541,7 +577,7 @@ const TVApp = ({ roomId, dbUrl }) => {
                         <p className="text-lg text-gray-200 mb-6">Голосуйте с телефонов прямо сейчас!</p>
                         
                         <div className="w-full h-3 bg-gray-700 rounded-full mb-8 overflow-hidden">
-                            <div className="timer-bar" style={{ width: `${(timer / 10) * 100}%` }}></div>
+                            <div className="timer-bar" style={{ width: `${(timer / 15) * 100}%` }}></div>
                         </div>
 
                         <div className="grid grid-cols-3 gap-6 mb-6">
@@ -580,16 +616,18 @@ const TVApp = ({ roomId, dbUrl }) => {
                             </span>
                         </div>
 
-                        <h2 className="text-3xl md:text-4xl font-bold mb-8 leading-snug">{currentQ.text}</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold mb-8 leading-snug">{currentQ.text || currentQ.q}</h2>
 
                         <div className="grid grid-cols-2 gap-6">
                             {currentQ.options.map((opt, i) => {
                                 const isResultPhase = currentRound.phase === 'showing_result';
-                                const isCorrect = isResultPhase && i === currentQ.correctIndex;
-                                const isWrong = isResultPhase && i !== currentQ.correctIndex;
+                                const isCorrect = isResultPhase && i === currentQCorrectIndex;
+                                const isWrong = isResultPhase && i !== currentQCorrectIndex;
                                 const letterClass = i === 0 ? 'quiz-btn-a' : i === 1 ? 'quiz-btn-b' : i === 2 ? 'quiz-btn-c' : 'quiz-btn-d';
 
-                                const playersChosenThis = playersList.filter(p => p.currentAnswer === i);
+                                const playersChosenThis = playersList.filter(
+                                    p => p.currentAnswer === i && (p.answeredQIndex === undefined || p.answeredQIndex === currentRound.questionIndex)
+                                );
 
                                 return (
                                     <div 
@@ -599,22 +637,24 @@ const TVApp = ({ roomId, dbUrl }) => {
                                     >
                                         <div className="quiz-btn-text text-center text-2xl font-bold">{opt}</div>
                                         
-                                        {/* Селфи игроков на ТВ */}
-                                        <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 flex gap-2 z-30">
-                                            {playersChosenThis.map(p => (
-                                                <div 
-                                                    key={p.id} 
-                                                    className="w-12 h-12 rounded-full border-4 overflow-hidden shadow-2xl bg-white flex items-center justify-center" 
-                                                    style={{ borderColor: p.color }}
-                                                >
-                                                    {p.selfie && p.selfie.startsWith('data:') ? (
-                                                        <img src={p.selfie} className="pawn-selfie-head w-full h-full object-cover" alt={p.name} />
-                                                    ) : (
-                                                        <span className="text-xl text-black font-bold">{p.selfie || '👤'}</span>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
+                                        {/* Селфи игроков на ТВ показываются в фазе результата */}
+                                        {isResultPhase && (
+                                            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 flex gap-2 z-30">
+                                                {playersChosenThis.map(p => (
+                                                    <div 
+                                                        key={p.id} 
+                                                        className="w-12 h-12 rounded-full border-4 overflow-hidden shadow-2xl bg-white flex items-center justify-center" 
+                                                        style={{ borderColor: p.color }}
+                                                    >
+                                                        {p.selfie && p.selfie.startsWith('data:') ? (
+                                                            <img src={p.selfie} className="pawn-selfie-head w-full h-full object-cover" alt={p.name} />
+                                                        ) : (
+                                                            <span className="text-xl text-black font-bold">{p.selfie || '👤'}</span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -652,7 +692,9 @@ const TVApp = ({ roomId, dbUrl }) => {
 // Экран Телефона (Игрок)
 const MobileApp = ({ roomId, dbUrl }) => {
     const [gameState, setGameState] = useState(null);
-    const [playerId, setPlayerId] = useState(localStorage.getItem('party_quiz_player_id') || null);
+    const [playerId, setPlayerId] = useState(
+        localStorage.getItem('party_quiz_player_id') || localStorage.getItem('playerId') || null
+    );
     const [isJoined, setIsJoined] = useState(false);
 
     const [name, setName] = useState('');
@@ -660,8 +702,17 @@ const MobileApp = ({ roomId, dbUrl }) => {
     const [selfie, setSelfie] = useState(null);
     const [showCameraModal, setShowCameraModal] = useState(false);
 
-    // Локальный стейт выбора для текущего вопроса
-    const [localSelectedAnswer, setLocalSelectedAnswer] = useState(null);
+    // Локальный стейт выбора, привязанный строго к номеру вопроса { qKey: 'cat_0', index: 2 }
+    const [localAnswerState, setLocalAnswerState] = useState({ qKey: null, index: null });
+
+    useEffect(() => {
+        if (playerId) {
+            // Синхронизируем оба ключа в Storage, чтобы sync.js гарантированно находил playerId
+            localStorage.setItem('party_quiz_player_id', playerId);
+            localStorage.setItem('playerId', playerId);
+            sessionStorage.setItem('playerId', playerId);
+        }
+    }, [playerId]);
 
     useEffect(() => {
         try {
@@ -678,11 +729,6 @@ const MobileApp = ({ roomId, dbUrl }) => {
             console.error("Player sync init error", err);
         }
     }, [roomId, dbUrl, playerId]);
-
-    // Сброс локального выбора при смене вопроса или фазы
-    useEffect(() => {
-        setLocalSelectedAnswer(null);
-    }, [gameState?.currentRound?.questionIndex, gameState?.status]);
 
     const usedColors = useMemo(() => {
         if (!gameState?.players) return [];
@@ -709,6 +755,8 @@ const MobileApp = ({ roomId, dbUrl }) => {
         const newId = playerId || generatePlayerId();
         setPlayerId(newId);
         localStorage.setItem('party_quiz_player_id', newId);
+        localStorage.setItem('playerId', newId);
+        sessionStorage.setItem('playerId', newId);
 
         const newPlayerData = {
             id: newId,
@@ -718,22 +766,32 @@ const MobileApp = ({ roomId, dbUrl }) => {
             position: 0,
             score: 0,
             currentVote: null,
-            currentAnswer: null
+            currentAnswer: -1,
+            answeredQIndex: -1
         };
 
         window.GameSync.joinGame(newPlayerData);
         setIsJoined(true);
     };
 
+    const currentQIndex = gameState?.currentRound?.questionIndex ?? 0;
+    const currentQKey = `${gameState?.currentRound?.categoryId || 'round'}_${currentQIndex}`;
+
     const sendVote = (catId) => {
         if (!gameState?.players?.[playerId] || gameState.players[playerId].currentVote) return;
-        window.GameSync.sendAction('vote', { categoryId: catId });
+        window.GameSync.patchPlayer(roomId, playerId, { currentVote: catId });
     };
 
     const sendAnswer = (optionIndex) => {
-        if (localSelectedAnswer !== null) return;
-        setLocalSelectedAnswer(optionIndex);
-        window.GameSync.sendAction('answer', { answerIndex: optionIndex });
+        if (gameState?.currentRound?.phase !== 'answering') return;
+        if (localAnswerState.qKey === currentQKey && localAnswerState.index !== null) return;
+
+        setLocalAnswerState({ qKey: currentQKey, index: optionIndex });
+        // Пишем напрямую через patchPlayer с номером текущего вопроса, чтобы не зависеть от ключей в sendAction
+        window.GameSync.patchPlayer(roomId, playerId, {
+            currentAnswer: optionIndex,
+            answeredQIndex: currentQIndex
+        });
     };
 
     if (!isJoined || !gameState?.players?.[playerId]) {
@@ -811,8 +869,13 @@ const MobileApp = ({ roomId, dbUrl }) => {
 
     const { status, timer, categoriesToVote, currentRound } = gameState;
     const myPlayer = gameState.players[playerId];
-    const isAnswerChosen = localSelectedAnswer !== null || myPlayer.currentAnswer !== null;
-    const chosenIndex = localSelectedAnswer !== null ? localSelectedAnswer : myPlayer.currentAnswer;
+
+    // Ответ считается выбранным только если он сделан в ТЕКУЩЕМ вопросе
+    const remoteHasValidAnswer = hasValidAnswer(myPlayer.currentAnswer) && myPlayer.answeredQIndex === currentQIndex;
+    const localHasValidAnswer = localAnswerState.qKey === currentQKey && localAnswerState.index !== null;
+    const isAnswerChosen = localHasValidAnswer || remoteHasValidAnswer;
+    const chosenIndex = localHasValidAnswer ? localAnswerState.index : (remoteHasValidAnswer ? myPlayer.currentAnswer : null);
+    const isShowingResult = currentRound?.phase === 'showing_result';
 
     return (
         <div className="mobile-container relative flex flex-col h-full p-4 pt-4 select-none">
@@ -864,14 +927,16 @@ const MobileApp = ({ roomId, dbUrl }) => {
                     </div>
                 )}
 
-                {/* ВОПРОСЫ: ПОДСВЕТКА ТОЛЬКО БЕЛЫМ (.quiz-btn-selected) */}
+                {/* ВОПРОСЫ */}
                 {status === 'round_active' && (
                     <div className="flex flex-col h-full justify-between pb-4">
                         <div className="text-center mb-2">
                             <div className="text-sm text-yellow-400 font-extrabold uppercase">
-                                Вопрос {(currentRound?.questionIndex || 0) + 1} из 4
+                                Вопрос {currentQIndex + 1} из 4
                             </div>
-                            <div className="text-3xl font-mono font-black">{timer}</div>
+                            <div className="text-3xl font-mono font-black">
+                                {isShowingResult ? 'Проверка на ТВ...' : timer}
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 gap-3.5 flex-1 justify-center my-auto">
@@ -881,7 +946,7 @@ const MobileApp = ({ roomId, dbUrl }) => {
                                 let btnClass = `quiz-btn quiz-btn-${lbl.toLowerCase()} active:scale-95 transition-all py-4`;
                                 if (isSelected) {
                                     btnClass += ' quiz-btn-selected';
-                                } else if (isAnswerChosen) {
+                                } else if (isAnswerChosen || isShowingResult) {
                                     btnClass += ' opacity-40';
                                 }
 
@@ -890,12 +955,12 @@ const MobileApp = ({ roomId, dbUrl }) => {
                                         key={i} 
                                         type="button"
                                         onClick={() => sendAnswer(i)} 
-                                        disabled={isAnswerChosen} 
+                                        disabled={isAnswerChosen || isShowingResult} 
                                         className={btnClass}
                                     >
                                         <div className="quiz-btn-letter font-black">{lbl}</div>
                                         <div className="quiz-btn-text text-xl font-bold">
-                                            {isSelected ? 'Ваш выбор' : `Вариант ${lbl}`}
+                                            {isSelected ? 'Ваш выбор ✓' : `Вариант ${lbl}`}
                                         </div>
                                     </button>
                                 );
