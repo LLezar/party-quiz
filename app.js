@@ -1,4 +1,10 @@
 // filename: app.js
+/**
+ * Frontend App Module - Party Quiz Board Game
+ * Toon Edition с поддержкой картинок в вопросах, адаптивностью под мобильные экраны,
+ * автосозданием комнаты через 15 сек, QR-кодом и bobblehead-фигурками игроков.
+ */
+
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 const TOTAL_CELLS = 25; // Индексы 0..24 в сетке 5x5
@@ -17,10 +23,7 @@ const getGridPos = (index) => {
 };
 
 const EMOJI_AVATARS = ['😎', '🤪', '🤡', '👽', '🤖', '😺', '🤠', '🦊'];
-const PLAYER_COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FFCC00', '#AF52DE', '#FF9500'];
-
-// Проверка, что ответ действительно выбран (защита от undefined в Firebase)
-const hasValidAnswer = (val) => typeof val === 'number' && val >= 0 && val <= 3;
+const PLAYER_COLORS = ['#ff3b69', '#ffb703', '#00c8ff', '#2ecc71', '#9d4edd', '#ff9100'];
 
 // Сортировка игроков по местам (по позиции на поле, при равенстве — по общему счету)
 const getSortedStandings = (playersObj) => {
@@ -140,51 +143,6 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
     );
 };
 
-// Начальный экран
-const StartScreen = () => {
-    const [dbUrl, setDbUrl] = useState(localStorage.getItem('firebaseDbUrl') || 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app');
-
-    const handleHost = useCallback(() => {
-        localStorage.setItem('firebaseDbUrl', dbUrl);
-        const room = generateRoomId();
-        const baseUrl = window.location.origin + window.location.pathname;
-        window.location.href = `${baseUrl}?role=host&room=${room}&db=${encodeURIComponent(dbUrl)}`;
-    }, [dbUrl]);
-
-    const handlePlayer = () => {
-        localStorage.setItem('firebaseDbUrl', dbUrl);
-        const room = prompt('Введите 4-значный код комнаты:');
-        if (room) {
-            const baseUrl = window.location.origin + window.location.pathname;
-            window.location.href = `${baseUrl}?role=player&room=${room.trim().toUpperCase()}&db=${encodeURIComponent(dbUrl)}`;
-        }
-    };
-
-    return (
-        <div className="flex flex-col items-center justify-center h-full p-4 tv-container">
-            <div className="glass-card p-8 max-w-md w-full text-center space-y-6">
-                <h1 className="text-5xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-r from-[#8B9A46] to-yellow-400 drop-shadow-md">
-                    Party Board Quiz
-                </h1>
-                <div className="text-left">
-                    <label className="block text-sm mb-2 text-gray-200 font-bold">Firebase Realtime DB URL:</label>
-                    <input 
-                        type="text" 
-                        value={dbUrl} 
-                        onChange={e => setDbUrl(e.target.value)} 
-                        placeholder="https://your-project.firebaseio.com"
-                        className="w-full p-3 rounded-xl bg-black/40 border border-white/30 text-white outline-none focus:border-[#8B9A46] transition-colors"
-                    />
-                </div>
-                <div className="space-y-4 pt-4">
-                    <button onClick={handleHost} className="primary-btn w-full py-4 text-xl shadow-lg">Экран ТВ (Хост)</button>
-                    <button onClick={handlePlayer} className="w-full py-4 rounded-xl text-xl font-bold bg-white/10 hover:bg-white/20 border border-white/30 transition-colors">Телефон (Игрок)</button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 // Экран Хоста (ТВ)
 const TVApp = ({ roomId, dbUrl }) => {
     const [gameState, setGameState] = useState(null);
@@ -199,7 +157,7 @@ const TVApp = ({ roomId, dbUrl }) => {
     const nextQuestionTimeoutRef = useRef(null);
 
     const baseUrl = window.location.origin + window.location.pathname;
-    const joinUrl = `${baseUrl}?role=player&room=${roomId}${dbUrl ? `&db=${encodeURIComponent(dbUrl)}` : ''}`;
+    const joinUrl = `${baseUrl}?role=mobile&room=${roomId}${dbUrl ? `&db=${encodeURIComponent(dbUrl)}` : ''}`;
 
     useEffect(() => {
         try {
@@ -228,7 +186,6 @@ const TVApp = ({ roomId, dbUrl }) => {
         };
     }, [roomId, dbUrl]);
 
-    // Синхронизация визуальных позиций игроков вне фазы шагов
     useEffect(() => {
         if (!gameState?.players || isAnimatingRoundMoves) return;
         const positions = {};
@@ -238,26 +195,37 @@ const TVApp = ({ roomId, dbUrl }) => {
         setVisualPositions(positions);
     }, [gameState?.players, isAnimatingRoundMoves]);
 
-    // Генерация QR-кода
     useEffect(() => {
         if (gameState?.status === 'lobby' && qrRef.current) {
-            qrRef.current.innerHTML = '';
-            try {
-                new QRCode(qrRef.current, {
+            const renderQr = () => {
+                if (!qrRef.current || !window.QRCode) return;
+                qrRef.current.innerHTML = '';
+                new window.QRCode(qrRef.current, {
                     text: joinUrl,
                     width: 220,
                     height: 220,
-                    colorDark : "#000000",
+                    colorDark : "#140d21",
                     colorLight : "#ffffff",
-                    correctLevel : QRCode.CorrectLevel.H
+                    correctLevel : window.QRCode.CorrectLevel.H
                 });
-            } catch(e) {
-                console.error("QR Code Error:", e);
+            };
+            if (window.QRCode) {
+                renderQr();
+            } else {
+                let script = document.getElementById('qrcode-cdn-script');
+                if (!script) {
+                    script = document.createElement('script');
+                    script.id = 'qrcode-cdn-script';
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+                    script.onload = renderQr;
+                    document.head.appendChild(script);
+                } else {
+                    script.addEventListener('load', renderQr);
+                }
             }
         }
     }, [gameState?.status, joinUrl]);
 
-    // Старт нового раунда (принимает актуальный словарь игроков, чтобы НЕ сбрасывать позиции из-за устаревшего замыкания!)
     const startNewRound = (overridePlayers = null) => {
         if (nextQuestionTimeoutRef.current) clearTimeout(nextQuestionTimeoutRef.current);
         resultTransitionLockRef.current = false;
@@ -268,22 +236,25 @@ const TVApp = ({ roomId, dbUrl }) => {
             { id: 'music', name: 'Музыка', icon: '🎵' }
         ];
 
-        // Берем самые свежие данные из overridePlayers или из глобального GameSync.currentState
         const sourcePlayers = overridePlayers || window.GameSync.currentState?.players || gameState?.players || {};
         const updatedPlayers = JSON.parse(JSON.stringify(sourcePlayers));
         roundCorrectRef.current = {};
+        
         Object.keys(updatedPlayers).forEach(pid => {
             updatedPlayers[pid].currentVote = null;
             updatedPlayers[pid].currentAnswer = -1;
             updatedPlayers[pid].answeredQIndex = -1;
-            // Позицию (position) и очки (score) бережно сохраняем!
             updatedPlayers[pid].position = updatedPlayers[pid].position || 0;
             roundCorrectRef.current[pid] = 0;
         });
 
+        // Генерируем уникальный ID голосования для этого раунда, чтобы сбросить старые голоса на телефонах
+        const newVoteRoundId = 'vote_' + Math.random().toString(36).substr(2, 6);
+
         window.GameSync.updateState({
             status: 'category_vote',
             timer: 15,
+            voteRoundId: newVoteRoundId,
             categoriesToVote: categories,
             currentRound: {
                 categoryId: null,
@@ -295,7 +266,6 @@ const TVApp = ({ roomId, dbUrl }) => {
         });
     };
 
-    // Таймер и фазовая машина раунда
     useEffect(() => {
         if (!gameState) return;
         const { status, timer, currentRound, players } = gameState;
@@ -311,7 +281,6 @@ const TVApp = ({ roomId, dbUrl }) => {
                 handleVoteFinished();
             }
         } else if (status === 'round_standings') {
-            // 10-секундный показ турнирной таблицы с местами после завершения прыжков
             if (timer > 0) {
                 timerId = setTimeout(() => window.GameSync.updateState({ timer: timer - 1 }), 1000);
             } else {
@@ -323,7 +292,7 @@ const TVApp = ({ roomId, dbUrl }) => {
                 const playerValues = Object.values(players || {});
                 const totalPlayers = playerValues.length;
                 const answeredPlayers = playerValues.filter(
-                    p => hasValidAnswer(p.currentAnswer) && (p.answeredQIndex === undefined || p.answeredQIndex === qIdx)
+                    p => typeof p.currentAnswer === 'number' && p.currentAnswer >= 0 && p.answeredQIndex === qIdx
                 ).length;
                 const allAnswered = totalPlayers > 0 && answeredPlayers >= totalPlayers;
 
@@ -338,7 +307,6 @@ const TVApp = ({ roomId, dbUrl }) => {
         return () => clearTimeout(timerId);
     }, [gameState?.status, gameState?.timer, gameState?.currentRound?.phase, gameState?.currentRound?.questionIndex, gameState?.players]);
 
-    // Завершение голосования за категорию
     const handleVoteFinished = () => {
         const latestPlayers = window.GameSync.currentState?.players || gameState.players || {};
         const votes = {};
@@ -371,7 +339,7 @@ const TVApp = ({ roomId, dbUrl }) => {
 
         window.GameSync.updateState({
             status: 'round_active',
-            timer: 15,
+            timer: 20,
             currentRound: {
                 categoryId: chosenCat,
                 questionIndex: 0,
@@ -382,7 +350,6 @@ const TVApp = ({ roomId, dbUrl }) => {
         });
     };
 
-    // Показ правильного ответа (фаза showing_result ровно на 4 секунды)
     const handleShowResultPhase = () => {
         if (resultTransitionLockRef.current) return;
         resultTransitionLockRef.current = true;
@@ -419,7 +386,7 @@ const TVApp = ({ roomId, dbUrl }) => {
                 });
 
                 await window.GameSync.updateState({
-                    timer: 15,
+                    timer: 20,
                     currentRound: {
                         categoryId: gameState.currentRound?.categoryId,
                         questionIndex: nextQIndex,
@@ -432,10 +399,9 @@ const TVApp = ({ roomId, dbUrl }) => {
             } else {
                 executeRoundMovement();
             }
-        }, 4000);
+        }, 5000);
     };
 
-    // Пошаговое движение фишек на количество правильных ответов + переход к 10-секундному показу мест
     const executeRoundMovement = async () => {
         setIsAnimatingRoundMoves(true);
 
@@ -457,7 +423,6 @@ const TVApp = ({ roomId, dbUrl }) => {
 
                 setWalkingPlayerId(pid);
                 currentPos += 1;
-
                 setVisualPositions(prev => ({ ...prev, [pid]: currentPos }));
 
                 await new Promise(res => setTimeout(res, 500));
@@ -472,7 +437,6 @@ const TVApp = ({ roomId, dbUrl }) => {
             playersCopy[pid].answeredQIndex = -1;
         }
 
-        // Сохраняем новые позиции игроков в БД
         await window.GameSync.updateState({
             players: playersCopy
         });
@@ -487,7 +451,6 @@ const TVApp = ({ roomId, dbUrl }) => {
                 players: playersCopy
             });
         } else {
-            // Все пропрыгали! Запускаем 10 секунд показа мест (турнирной таблицы)
             await window.GameSync.updateState({
                 status: 'round_standings',
                 timer: 10,
@@ -506,8 +469,8 @@ const TVApp = ({ roomId, dbUrl }) => {
 
     return (
         <div className="tv-container relative w-screen h-screen flex flex-col p-0 m-0 overflow-hidden">
-            {/* Поле 5x5 */}
-            <div className={`board-grid w-full h-full absolute inset-0 z-0 p-4 transition-all duration-500 ${(status === 'round_results' || status === 'round_standings') ? 'opacity-100 scale-100' : 'opacity-25 filter blur-[1px]'}`}>
+            {/* Поле 5x5 (На всю ширину и высоту экрана) */}
+            <div className={`board-grid absolute inset-0 z-0 p-4 transition-all duration-500 ${(status === 'round_results' || status === 'round_standings') ? 'opacity-100 scale-100' : 'opacity-25 filter blur-[2px]'}`}>
                 {Array.from({ length: TOTAL_CELLS }).map((_, i) => {
                     const pos = getGridPos(i);
                     const isStart = i === 0;
@@ -520,7 +483,7 @@ const TVApp = ({ roomId, dbUrl }) => {
                             className={`board-cell ${isStart ? 'board-cell-start' : ''} ${isFinish ? 'board-cell-finish' : ''} ${hasPawns ? 'board-cell-active' : ''}`} 
                             style={{ gridRow: pos.row, gridColumn: pos.col }}
                         >
-                            <span className="font-mono text-2xl font-black">
+                            <span className="board-cell-number">
                                 {isStart ? 'СТАРТ' : isFinish ? 'ФИНИШ 🏆' : i}
                             </span>
                         </div>
@@ -532,31 +495,28 @@ const TVApp = ({ roomId, dbUrl }) => {
                     <Pawn 
                         key={p.id} 
                         color={p.color} 
-                        selfie={p.selfie} 
+                        selfie={p.selfieBase64 || p.selfie} 
                         position={visualPositions[p.id] ?? p.position ?? 0} 
                         isWalking={walkingPlayerId === p.id} 
                     />
                 ))}
             </div>
 
-            {/* Фаза шагов */}
-            {status === 'round_results' && (
-                <div className="fixed top-8 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-                    <div className="glass-card px-8 py-4 flex items-center gap-4 border-2 border-yellow-400">
+            {/* Контент ТВ (Поверх поля) */}
+            <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6 w-full h-full pointer-events-none">
+                
+                {status === 'round_results' && (
+                    <div className="absolute top-8 left-1/2 -translate-x-1/2 glass-card px-8 py-4 flex items-center gap-4 border-4 border-yellow-400">
                         <span className="text-4xl animate-bounce">🎲</span>
                         <div>
                             <div className="text-2xl font-black text-yellow-400">Игроки делают ходы!</div>
                             <div className="text-sm text-gray-200">1 верный ответ = 1 шаг вперед</div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {/* Контент ТВ */}
-            <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6">
-                {/* 10-СЕКУНДНОЕ УВЕДОМЛЕНИЕ О ТЕКУЩИХ МЕСТАХ ИГРОКОВ */}
                 {status === 'round_standings' && (
-                    <div className="glass-card p-8 text-center max-w-2xl w-full border-4 border-yellow-400 shadow-2xl animate-fade-in">
+                    <div className="glass-card p-8 text-center max-w-2xl w-full border-4 border-yellow-400 shadow-2xl animate-fade-in pointer-events-auto">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-4xl font-black text-yellow-400">🏆 Текущие места</h2>
                             <span className="text-3xl font-mono font-bold bg-white/20 px-5 py-1.5 rounded-xl border border-white/30">
@@ -575,14 +535,14 @@ const TVApp = ({ roomId, dbUrl }) => {
                                         style={{ borderColor: p.color }}
                                     >
                                         <div className="flex items-center gap-4">
-                                            <span className="text-2xl font-black text-yellow-400 min-w-[130px] text-left">
+                                            <span className="text-2xl font-black text-yellow-400 min-w-[140px] text-left">
                                                 {medal}
                                             </span>
                                             <div className="w-12 h-12 rounded-full overflow-hidden border-2 bg-white flex items-center justify-center shrink-0" style={{ borderColor: p.color }}>
-                                                {p.selfie && p.selfie.startsWith('data:') ? (
-                                                    <img src={p.selfie} alt={p.name} className="w-full h-full object-cover" />
+                                                {p.selfieBase64 || p.selfie ? (
+                                                    <img src={p.selfieBase64 || p.selfie} alt={p.name} className="w-full h-full object-cover" />
                                                 ) : (
-                                                    <span className="text-2xl text-black">{p.selfie || '👤'}</span>
+                                                    <span className="text-2xl text-black">👤</span>
                                                 )}
                                             </div>
                                             <span className="text-2xl font-bold text-white">{p.name}</span>
@@ -603,9 +563,8 @@ const TVApp = ({ roomId, dbUrl }) => {
                     </div>
                 )}
 
-                {/* ЛОББИ */}
                 {status === 'lobby' && (
-                    <div className="glass-card p-8 text-center max-w-2xl w-full shadow-2xl">
+                    <div className="glass-card p-8 text-center max-w-2xl w-full shadow-2xl pointer-events-auto">
                         <h2 className="text-5xl font-black mb-4">
                             Код комнаты: <span className="text-yellow-400 tracking-widest">{roomId}</span>
                         </h2>
@@ -626,10 +585,10 @@ const TVApp = ({ roomId, dbUrl }) => {
                             {playersList.map(p => (
                                 <div key={p.id} className="flex flex-col items-center animate-fade-in">
                                     <div className="w-16 h-16 rounded-full overflow-hidden border-4 mb-2 bg-white shadow-lg flex items-center justify-center" style={{ borderColor: p.color }}>
-                                        {p.selfie && p.selfie.startsWith('data:') ? (
-                                            <img src={p.selfie} alt="selfie" className="w-full h-full object-cover" />
+                                        {p.selfieBase64 || p.selfie ? (
+                                            <img src={p.selfieBase64 || p.selfie} alt="selfie" className="w-full h-full object-cover" />
                                         ) : (
-                                            <span className="text-3xl text-black">{p.selfie || '👤'}</span>
+                                            <span className="text-3xl text-black">👤</span>
                                         )}
                                     </div>
                                     <span className="font-bold text-sm max-w-[80px] truncate">{p.name}</span>
@@ -647,28 +606,27 @@ const TVApp = ({ roomId, dbUrl }) => {
                     </div>
                 )}
 
-                {/* ГОЛОСОВАНИЕ */}
                 {status === 'category_vote' && (
-                    <div className="glass-card p-8 text-center max-w-3xl w-full">
-                        <h2 className="text-4xl font-extrabold mb-2">Выбор категории</h2>
-                        <p className="text-lg text-gray-200 mb-6">Голосуйте с телефонов прямо сейчас!</p>
+                    <div className="glass-card p-8 text-center max-w-4xl w-full pointer-events-auto">
+                        <h2 className="text-5xl font-extrabold mb-2">Выбор категории</h2>
+                        <p className="text-xl text-gray-200 mb-8">Голосуйте с телефонов прямо сейчас!</p>
                         
-                        <div className="w-full h-3 bg-gray-700 rounded-full mb-8 overflow-hidden">
+                        <div className="w-full h-4 bg-gray-700 rounded-full mb-10 overflow-hidden">
                             <div className="timer-bar" style={{ width: `${(timer / 15) * 100}%` }}></div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-6 mb-6">
+                        <div className="grid grid-cols-3 gap-8 mb-8">
                             {(categoriesToVote || []).map((cat, i) => (
-                                <div key={i} className="glass-card p-6 bg-white/10 flex flex-col items-center rounded-2xl border border-white/20">
-                                    <span className="text-6xl mb-4 drop-shadow">{cat.icon}</span>
-                                    <h3 className="text-2xl font-bold mb-4">{cat.name}</h3>
-                                    <div className="flex gap-2 min-h-[36px]">
+                                <div key={i} className="glass-card p-6 bg-white/10 flex flex-col items-center rounded-2xl border-4 border-white/20">
+                                    <span className="text-7xl mb-6 drop-shadow">{cat.icon}</span>
+                                    <h3 className="text-3xl font-bold mb-6 leading-tight">{cat.name}</h3>
+                                    <div className="flex gap-2 min-h-[48px]">
                                         {playersList.filter(p => p.currentVote === cat.id).map(p => (
-                                            <div key={p.id} className="w-9 h-9 rounded-full border-2 border-white shadow-md overflow-hidden bg-white" style={{ borderColor: p.color }}>
-                                                {p.selfie && p.selfie.startsWith('data:') ? (
-                                                    <img src={p.selfie} alt="p" className="w-full h-full object-cover" />
+                                            <div key={p.id} className="w-12 h-12 rounded-full border-4 border-white shadow-lg overflow-hidden bg-white" style={{ borderColor: p.color }}>
+                                                {p.selfieBase64 || p.selfie ? (
+                                                    <img src={p.selfieBase64 || p.selfie} alt="p" className="w-full h-full object-cover" />
                                                 ) : (
-                                                    <span className="flex items-center justify-center text-sm">{p.selfie || '👤'}</span>
+                                                    <span className="flex items-center justify-center text-xl">👤</span>
                                                 )}
                                             </div>
                                         ))}
@@ -677,25 +635,27 @@ const TVApp = ({ roomId, dbUrl }) => {
                             ))}
                         </div>
 
-                        <div className="text-4xl font-mono font-bold text-yellow-400">{timer} сек</div>
+                        <div className="text-5xl font-mono font-bold text-yellow-400">{timer} сек</div>
                     </div>
                 )}
 
-                {/* АКТИВНЫЙ ВОПРОС НА ТВ */}
                 {status === 'round_active' && currentQ && (
-                    <div className="glass-card p-8 text-center max-w-4xl w-full">
+                    <div className="glass-card p-8 text-center max-w-5xl w-full pointer-events-auto">
                         <div className="flex justify-between items-center mb-6">
-                            <span className="text-2xl text-yellow-400 font-black uppercase">
+                            <span className="text-3xl text-yellow-400 font-black uppercase">
                                 Вопрос {currentRound.questionIndex + 1} из 4
                             </span>
-                            <span className="text-4xl font-mono font-bold bg-white/20 px-6 py-1.5 rounded-xl border border-white/30">
-                                {currentRound.phase === 'showing_result' ? '✓ Ответ' : `${timer}s`}
+                            <span className="text-5xl font-mono font-bold bg-white/20 px-6 py-2 rounded-2xl border-4 border-white/30">
+                                {currentRound.phase === 'showing_result' ? '✓' : timer}
                             </span>
                         </div>
 
-                        <h2 className="text-3xl md:text-4xl font-bold mb-8 leading-snug">{currentQ.text || currentQ.q}</h2>
+                        {currentQ.imageUrl && (
+                            <img src={currentQ.imageUrl} alt="Вопрос" className="question-image" style={{ maxHeight: 280, maxWidth: '100%', marginBottom: 20, borderRadius: 16 }} />
+                        )}
+                        <h2 className="text-4xl md:text-5xl font-bold mb-10 leading-snug">{currentQ.text || currentQ.q}</h2>
 
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-2 gap-8">
                             {currentQ.options.map((opt, i) => {
                                 const isResultPhase = currentRound.phase === 'showing_result';
                                 const isCorrect = isResultPhase && i === currentQCorrectIndex;
@@ -710,28 +670,26 @@ const TVApp = ({ roomId, dbUrl }) => {
                                     <div 
                                         key={`${currentRound.questionIndex}_${i}`} 
                                         className={`quiz-btn ${letterClass} ${isCorrect ? 'quiz-btn-correct' : ''} ${isWrong ? 'opacity-40' : ''} relative !cursor-default`} 
-                                        style={{ justifyContent: 'center' }}
+                                        style={{ justifyContent: 'center', minHeight: 90 }}
                                     >
-                                        <div className="quiz-btn-text text-center text-2xl font-bold">{opt}</div>
+                                        <div className="quiz-btn-text text-center text-3xl font-bold">{opt}</div>
                                         
-                                        {/* Селфи игроков на ТВ показываются в фазе результата */}
-                                        {isResultPhase && (
-                                            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 flex gap-2 z-30">
-                                                {playersChosenThis.map(p => (
-                                                    <div 
-                                                        key={p.id} 
-                                                        className="w-12 h-12 rounded-full border-4 overflow-hidden shadow-2xl bg-white flex items-center justify-center" 
-                                                        style={{ borderColor: p.color }}
-                                                    >
-                                                        {p.selfie && p.selfie.startsWith('data:') ? (
-                                                            <img src={p.selfie} className="pawn-selfie-head w-full h-full object-cover" alt={p.name} />
-                                                        ) : (
-                                                            <span className="text-xl text-black font-bold">{p.selfie || '👤'}</span>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                        {/* Селфи игроков на ТВ показываются даже в процессе ответа (но полупрозрачно, если фаза answering) */}
+                                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-30">
+                                            {playersChosenThis.map(p => (
+                                                <div 
+                                                    key={p.id} 
+                                                    className={`w-14 h-14 rounded-full border-4 overflow-hidden shadow-2xl bg-white flex items-center justify-center transition-all ${isResultPhase ? 'opacity-100 scale-110' : 'opacity-80 scale-90'}`}
+                                                    style={{ borderColor: p.color }}
+                                                >
+                                                    {p.selfieBase64 || p.selfie ? (
+                                                        <img src={p.selfieBase64 || p.selfie} className="w-full h-full object-cover" alt={p.name} />
+                                                    ) : (
+                                                        <span className="text-2xl text-black font-bold">👤</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -739,16 +697,15 @@ const TVApp = ({ roomId, dbUrl }) => {
                     </div>
                 )}
 
-                {/* ФИНИШ */}
                 {status === 'finished' && players && players[winnerId] && (
-                    <div className="glass-card p-12 text-center shadow-[0_0_100px_rgba(255,204,0,0.7)] border-4 border-yellow-400 max-w-xl">
+                    <div className="glass-card p-12 text-center shadow-[0_0_100px_rgba(255,204,0,0.7)] border-4 border-yellow-400 max-w-xl pointer-events-auto">
                         <h1 className="text-6xl font-black mb-6 text-yellow-400 drop-shadow-lg">ПОБЕДИТЕЛЬ!</h1>
                         <div className="flex flex-col items-center">
                             <div className="w-48 h-48 rounded-full border-[8px] mb-4 shadow-2xl overflow-hidden bg-white flex items-center justify-center" style={{ borderColor: players[winnerId].color }}>
-                                {players[winnerId].selfie && players[winnerId].selfie.startsWith('data:') ? (
-                                    <img src={players[winnerId].selfie} alt="winner" className="w-full h-full object-cover" />
+                                {players[winnerId].selfieBase64 || players[winnerId].selfie ? (
+                                    <img src={players[winnerId].selfieBase64 || players[winnerId].selfie} alt="winner" className="w-full h-full object-cover" />
                                 ) : (
-                                    <span className="text-7xl text-black">{players[winnerId].selfie || '👤'}</span>
+                                    <span className="text-7xl text-black">👤</span>
                                 )}
                             </div>
                             <h2 className="text-5xl font-black text-white">{players[winnerId].name}</h2>
@@ -779,14 +736,13 @@ const MobileApp = ({ roomId, dbUrl }) => {
     const [selfie, setSelfie] = useState(null);
     const [showCameraModal, setShowCameraModal] = useState(false);
 
-    // Локальный стейт выбора, привязанный строго к номеру вопроса { qKey: 'cat_0', index: 2 }
     const [localAnswerState, setLocalAnswerState] = useState({ qKey: null, index: null });
+    const [localVoteState, setLocalVoteState] = useState(null);
 
     useEffect(() => {
         if (playerId) {
             localStorage.setItem('party_quiz_player_id', playerId);
             localStorage.setItem('playerId', playerId);
-            sessionStorage.setItem('playerId', playerId);
         }
     }, [playerId]);
 
@@ -806,7 +762,6 @@ const MobileApp = ({ roomId, dbUrl }) => {
         }
     }, [roomId, dbUrl, playerId]);
 
-    // Снимаем фокус с активной кнопки при смене вопроса, чтобы браузер не оставлял светлую :focus/:hover подсветку!
     useEffect(() => {
         if (document.activeElement && typeof document.activeElement.blur === 'function') {
             document.activeElement.blur();
@@ -838,13 +793,12 @@ const MobileApp = ({ roomId, dbUrl }) => {
         const newId = playerId || generatePlayerId();
         setPlayerId(newId);
         localStorage.setItem('party_quiz_player_id', newId);
-        localStorage.setItem('playerId', newId);
-        sessionStorage.setItem('playerId', newId);
 
         const newPlayerData = {
             id: newId,
             name: name.trim().slice(0, 12),
             color: color,
+            selfieBase64: selfie, // Синхронизируем с ТВ
             selfie: selfie,
             position: 0,
             score: 0,
@@ -853,18 +807,27 @@ const MobileApp = ({ roomId, dbUrl }) => {
             answeredQIndex: -1
         };
 
-        window.GameSync.joinGame(newPlayerData);
+        window.GameSync.patchPlayer(roomId, newId, newPlayerData);
         setIsJoined(true);
+    };
+
+    // Привязываем голосование к уникальному voteRoundId, чтобы сбрасывать блокировку кнопок на телефоне при новой категории
+    const currentVoteRoundId = gameState?.voteRoundId || 'vote_0';
+
+    const sendVote = (catId, e) => {
+        if (e && e.currentTarget) e.currentTarget.blur();
+        
+        // Блокируем множественное голосование в рамках одного раунда
+        if (localVoteState === currentVoteRoundId || (gameState?.players?.[playerId]?.currentVote && gameState.players[playerId].currentVote.length > 0)) {
+            return;
+        }
+
+        setLocalVoteState(currentVoteRoundId);
+        window.GameSync.patchPlayer(roomId, playerId, { currentVote: catId });
     };
 
     const currentQIndex = gameState?.currentRound?.questionIndex ?? 0;
     const currentQKey = `${gameState?.currentRound?.categoryId || 'round'}_${currentQIndex}`;
-
-    const sendVote = (catId, e) => {
-        if (e && e.currentTarget) e.currentTarget.blur();
-        if (!gameState?.players?.[playerId] || gameState.players[playerId].currentVote) return;
-        window.GameSync.patchPlayer(roomId, playerId, { currentVote: catId });
-    };
 
     const sendAnswer = (optionIndex, e) => {
         if (e && e.currentTarget) e.currentTarget.blur();
@@ -880,33 +843,33 @@ const MobileApp = ({ roomId, dbUrl }) => {
 
     if (!isJoined || !gameState?.players?.[playerId]) {
         return (
-            <div className="mobile-container relative flex flex-col items-center justify-center p-4 h-full overflow-y-auto">
+            <div className="mobile-container relative flex flex-col items-center p-2 pt-6 h-full overflow-y-auto">
                 <CameraModal isOpen={showCameraModal} onClose={() => setShowCameraModal(false)} onSave={handleSavePhoto} />
                 
-                <div className="glass-card w-full max-w-sm space-y-5 my-auto">
-                    <h2 className="text-3xl font-extrabold text-center text-yellow-400">Вход в игру</h2>
+                <div className="glass-card w-full space-y-4 my-auto" style={{ maxWidth: 360 }}>
+                    <h2 className="text-2xl font-extrabold text-center text-yellow-400">Вход в игру</h2>
                     
                     <div className="flex flex-col items-center gap-3">
                         <div 
-                            className="camera-preview-container relative w-28 h-28 rounded-full overflow-hidden flex items-center justify-center bg-black/50 shadow-xl"
+                            className="camera-preview-container relative w-24 h-24 rounded-full overflow-hidden flex items-center justify-center bg-black/50 shadow-xl shrink-0"
                             style={{ borderColor: color || '#fff', borderWidth: '4px' }}
                         >
-                            {!selfie && <div className="absolute inset-0 flex items-center justify-center text-4xl">👤</div>}
+                            {!selfie && <div className="absolute inset-0 flex items-center justify-center text-3xl">👤</div>}
                             {selfie && selfie.startsWith('data:') && <img src={selfie} alt="selfie" className="w-full h-full object-cover" />}
                             {selfie && !selfie.startsWith('data:') && <div className="w-full h-full bg-white flex items-center justify-center text-5xl text-black">{selfie}</div>}
                         </div>
                         
-                        <button onClick={() => setShowCameraModal(true)} className="primary-btn bg-yellow-500 hover:bg-yellow-600 text-black w-full font-bold py-2.5">
+                        <button onClick={() => setShowCameraModal(true)} className="primary-btn bg-yellow-500 hover:bg-yellow-600 text-black w-full font-bold py-2 px-2 text-sm shrink-0">
                             📸 Сделать селфи
                         </button>
                         
-                        <div className="text-xs text-gray-300 font-semibold">или выберите рожицу:</div>
-                        <div className="flex gap-2 flex-wrap justify-center">
+                        <div className="text-[11px] text-gray-300 font-semibold uppercase tracking-wider shrink-0">или рожицу:</div>
+                        <div className="flex gap-1.5 flex-wrap justify-center shrink-0">
                             {EMOJI_AVATARS.map(em => (
                                 <button 
                                     key={em} 
                                     onClick={() => setSelfie(em)} 
-                                    className={`text-2xl hover:scale-125 transition-transform p-1.5 rounded-lg ${selfie === em ? 'bg-yellow-400/40 ring-2 ring-yellow-400' : 'bg-white/10'}`}
+                                    className={`text-xl transition-transform p-1.5 rounded-lg ${selfie === em ? 'bg-yellow-400/40 ring-2 ring-yellow-400 scale-110' : 'bg-white/10 hover:bg-white/20'}`}
                                 >
                                     {em}
                                 </button>
@@ -920,12 +883,12 @@ const MobileApp = ({ roomId, dbUrl }) => {
                         onChange={e => setName(e.target.value)} 
                         placeholder="Ваше имя" 
                         maxLength="12" 
-                        className="w-full p-3.5 rounded-xl bg-black/40 border border-white/30 text-center text-lg font-bold outline-none focus:border-[#8B9A46]" 
+                        className="w-full p-3 rounded-xl bg-black/40 border-2 border-white/30 text-center text-lg font-bold outline-none focus:border-[#8B9A46] shrink-0" 
                     />
 
-                    <div className="space-y-1">
-                        <div className="text-xs text-gray-300 text-center font-semibold">Выберите цвет:</div>
-                        <div className="flex justify-center gap-2.5 flex-wrap pt-1">
+                    <div className="space-y-1 shrink-0">
+                        <div className="text-[11px] text-gray-300 text-center font-semibold uppercase tracking-wider">Цвет:</div>
+                        <div className="flex justify-center gap-2 flex-wrap pt-1">
                             {PLAYER_COLORS.map(c => {
                                 const isTaken = usedColors.includes(c);
                                 return (
@@ -933,17 +896,17 @@ const MobileApp = ({ roomId, dbUrl }) => {
                                         key={c} 
                                         onClick={() => !isTaken && setColor(c)} 
                                         disabled={isTaken}
-                                        className={`w-11 h-11 rounded-full border-4 transition-all relative ${color === c ? 'scale-110 border-white shadow-lg' : 'border-black/30'} ${isTaken ? 'opacity-30 cursor-not-allowed grayscale' : 'hover:scale-105'}`} 
+                                        className={`w-9 h-9 rounded-full border-4 transition-all relative ${color === c ? 'scale-110 border-white shadow-lg' : 'border-black/30'} ${isTaken ? 'opacity-30 cursor-not-allowed grayscale' : 'hover:scale-105'}`} 
                                         style={{ backgroundColor: c }}
                                     >
-                                        {isTaken && <span className="absolute inset-0 flex items-center justify-center text-xs text-white font-bold">✕</span>}
+                                        {isTaken && <span className="absolute inset-0 flex items-center justify-center text-[10px] text-white font-bold">✕</span>}
                                     </button>
                                 );
                             })}
                         </div>
                     </div>
 
-                    <button onClick={handleJoin} className="primary-btn w-full mt-2 text-xl py-3.5 shadow-xl font-bold">
+                    <button onClick={handleJoin} className="primary-btn w-full mt-1 text-lg py-3 shadow-xl font-bold shrink-0">
                         Войти в игру
                     </button>
                 </div>
@@ -956,90 +919,91 @@ const MobileApp = ({ roomId, dbUrl }) => {
     const standingsList = getSortedStandings(players);
     const myRank = standingsList.findIndex(p => p.id === playerId) + 1;
 
-    // Ответ считается выбранным только если он сделан в ТЕКУЩЕМ вопросе
-    const remoteHasValidAnswer = hasValidAnswer(myPlayer.currentAnswer) && myPlayer.answeredQIndex === currentQIndex;
+    // Сброс и подсчет голосов для мобильного пульта
+    const remoteHasVote = myPlayer.currentVote && myPlayer.currentVote.length > 0;
+    const localHasVote = localVoteState === currentVoteRoundId;
+    const isVoteSubmitted = remoteHasVote || localHasVote;
+    const currentMyVoteId = localHasVote ? myPlayer.currentVote : (remoteHasVote ? myPlayer.currentVote : null);
+
+    const remoteHasValidAnswer = typeof myPlayer.currentAnswer === 'number' && myPlayer.currentAnswer >= 0 && myPlayer.answeredQIndex === currentQIndex;
     const localHasValidAnswer = localAnswerState.qKey === currentQKey && localAnswerState.index !== null;
     const isAnswerChosen = localHasValidAnswer || remoteHasValidAnswer;
     const chosenIndex = localHasValidAnswer ? localAnswerState.index : (remoteHasValidAnswer ? myPlayer.currentAnswer : null);
     const isShowingResult = currentRound?.phase === 'showing_result';
 
     return (
-        <div className="mobile-container relative flex flex-col h-full p-4 pt-4 select-none">
-            {/* Карточка текущего профиля */}
-            <div className="glass-card p-3 mb-3 flex items-center justify-between !py-2 !px-4 !rounded-2xl shrink-0">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full border-2 overflow-hidden bg-white shadow flex items-center justify-center" style={{ borderColor: myPlayer.color }}>
-                         {myPlayer.selfie && myPlayer.selfie.startsWith('data:') ? (
-                             <img src={myPlayer.selfie} alt="avatar" className="w-full h-full object-cover" />
+        <div className="mobile-container relative flex flex-col h-full p-3 pt-3 select-none">
+            {/* Карточка текущего профиля (уменьшена для экономии места) */}
+            <div className="glass-card p-2 mb-2 flex items-center justify-between !rounded-xl shrink-0" style={{ minHeight: 52 }}>
+                <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-full border-2 overflow-hidden bg-white shadow flex items-center justify-center shrink-0" style={{ borderColor: myPlayer.color }}>
+                         {myPlayer.selfieBase64 || myPlayer.selfie ? (
+                             <img src={myPlayer.selfieBase64 || myPlayer.selfie} alt="avatar" className="w-full h-full object-cover" />
                          ) : (
-                             <span className="text-xl text-black">{myPlayer.selfie || '👤'}</span>
+                             <span className="text-xl text-black">👤</span>
                          )}
                     </div>
                     <div>
-                        <div className="font-bold text-lg leading-tight">{myPlayer.name}</div>
-                        <div className="text-xs text-yellow-400 font-bold">{myRank > 0 ? `${myRank} место` : ''}</div>
+                        <div className="font-bold text-[15px] leading-none mb-0.5">{myPlayer.name}</div>
+                        <div className="text-[11px] text-yellow-400 font-bold leading-none">{myRank > 0 ? `${myRank} место` : ''}</div>
                     </div>
                 </div>
                 <div className="text-right">
-                    <div className="text-[10px] text-gray-300 uppercase tracking-wider">Клетка</div>
-                    <div className="font-mono text-xl font-black" style={{ color: myPlayer.color }}>
-                        {(myPlayer.position || 0)} / 24
+                    <div className="text-[9px] text-gray-400 uppercase tracking-wider leading-none mb-0.5">Клетка</div>
+                    <div className="font-mono text-lg font-black leading-none" style={{ color: myPlayer.color }}>
+                        {(myPlayer.position || 0)}/24
                     </div>
                 </div>
             </div>
 
-            <div className="flex-1 flex flex-col justify-center">
-                {/* ЛОББИ */}
+            <div className="flex-1 flex flex-col justify-center min-h-0">
                 {status === 'lobby' && (
-                    <div className="text-center glass-card p-8">
-                        <div className="text-6xl mb-4 animate-spin inline-block">⏳</div>
-                        <h2 className="text-2xl font-bold mb-2">Вы в игре!</h2>
-                        <p className="text-gray-200">Ожидайте запуска партии на экране ТВ.</p>
+                    <div className="text-center glass-card p-6">
+                        <div className="text-5xl mb-4 animate-spin inline-block">⏳</div>
+                        <h2 className="text-xl font-bold mb-2">Вы в игре!</h2>
+                        <p className="text-sm text-gray-300">Ожидайте запуска партии на экране ТВ.</p>
                     </div>
                 )}
 
-                {/* ГОЛОСОВАНИЕ */}
                 {status === 'category_vote' && (
-                    <div className="flex flex-col gap-3 h-full justify-center">
-                        <h2 className="text-2xl font-black text-center mb-2">Выберите тему:</h2>
+                    <div className="flex flex-col gap-2.5 h-full justify-center">
+                        <h2 className="text-xl font-black text-center mb-1 shrink-0">Выберите тему:</h2>
                         {(categoriesToVote || []).map(cat => (
                             <button 
-                                key={cat.id} 
+                                key={`${currentVoteRoundId}_${cat.id}`} 
                                 onClick={(e) => sendVote(cat.id, e)} 
-                                disabled={!!myPlayer.currentVote} 
-                                className={`glass-card flex items-center gap-4 text-xl font-bold w-full p-5 transition-all active:scale-95 ${myPlayer.currentVote === cat.id ? 'border-[#8B9A46] shadow-[0_0_20px_rgba(139,154,70,0.8)] scale-102 bg-[#8B9A46]/30' : ''} ${myPlayer.currentVote && myPlayer.currentVote !== cat.id ? 'opacity-40 grayscale' : ''}`}
+                                disabled={isVoteSubmitted} 
+                                className={`glass-card flex items-center gap-3 text-lg font-bold w-full p-3.5 transition-all outline-none focus:outline-none shrink-0 ${currentMyVoteId === cat.id ? 'border-[#8B9A46] shadow-[0_0_15px_rgba(139,154,70,0.8)] scale-102 bg-[#8B9A46]/30' : ''} ${isVoteSubmitted && currentMyVoteId !== cat.id ? 'opacity-40 grayscale' : ''}`}
                             >
-                                <span className="text-4xl">{cat.icon}</span>
-                                <span>{cat.name}</span>
+                                <span className="text-3xl shrink-0">{cat.icon}</span>
+                                <span className="truncate leading-tight">{cat.name}</span>
                             </button>
                         ))}
                     </div>
                 )}
 
-                {/* ВОПРОСЫ: уникальный key={currentQKey + '_' + i} полностью пересоздает DOM-кнопку при новом вопросе! */}
                 {status === 'round_active' && (
-                    <div className="flex flex-col h-full justify-between pb-4">
-                        <div className="text-center mb-2">
-                            <div className="text-sm text-yellow-400 font-extrabold uppercase">
+                    <div className="flex flex-col h-full justify-between pb-2">
+                        <div className="text-center mb-2 shrink-0">
+                            <div className="text-xs text-yellow-400 font-extrabold uppercase mb-0.5">
                                 Вопрос {currentQIndex + 1} из 4
                             </div>
-                            <div className="text-3xl font-mono font-black">
+                            <div className="text-2xl font-mono font-black">
                                 {isShowingResult ? 'Проверка на ТВ...' : timer}
                             </div>
                         </div>
 
-                        <div key={currentQKey} className="grid grid-cols-1 gap-3.5 flex-1 justify-center my-auto">
+                        <div key={currentQKey} className="grid grid-cols-1 gap-2.5 flex-1 justify-center my-auto min-h-0">
                             {['A', 'B', 'C', 'D'].map((lbl, i) => {
                                 const isSelected = !isShowingResult && chosenIndex === i;
 
-                                let btnClass = `quiz-btn quiz-btn-${lbl.toLowerCase()} active:scale-95 transition-all py-4 outline-none focus:outline-none`;
+                                let btnClass = `quiz-btn quiz-btn-${lbl.toLowerCase()} active:scale-95 transition-all py-3 outline-none focus:outline-none h-full`;
                                 if (isSelected) {
                                     btnClass += ' quiz-btn-selected';
                                 } else if (isAnswerChosen || isShowingResult) {
                                     btnClass += ' opacity-40';
                                 }
 
-                                // Явно задаем чистый базовый фон для невыбранных кнопок, чтобы мобильный браузер не держал светлый :hover/:focus со старого вопроса
                                 const inlineResetStyle = !isSelected ? { backgroundColor: 'var(--btn-quiz-bg, #1e281b)' } : {};
 
                                 return (
@@ -1051,61 +1015,52 @@ const MobileApp = ({ roomId, dbUrl }) => {
                                         className={btnClass}
                                         style={inlineResetStyle}
                                     >
-                                        <div className="quiz-btn-letter font-black">{lbl}</div>
-                                        <div className="quiz-btn-text text-xl font-bold">
+                                        <div className="quiz-btn-letter font-black w-10 h-10 min-w-10 text-xl shrink-0">{lbl}</div>
+                                        <div className="quiz-btn-text text-[15px] font-bold leading-tight">
                                             {isSelected ? 'Ваш выбор ✓' : `Вариант ${lbl}`}
                                         </div>
                                     </button>
                                 );
                             })}
                         </div>
-
-                        {isAnswerChosen && !isShowingResult && (
-                            <div className="text-center text-sm font-semibold text-yellow-300 mt-2 animate-pulse">
-                                Ответ принят! Смотрите на экран ТВ...
-                            </div>
-                        )}
                     </div>
                 )}
 
-                {/* ПЕРЕДВИЖЕНИЕ ПО ДОСКЕ */}
                 {status === 'round_results' && (
-                    <div className="text-center glass-card p-8 border-2 border-yellow-400">
-                        <div className="text-6xl mb-4 animate-bounce">🏃‍♂️</div>
-                        <h2 className="text-2xl font-black mb-2 text-yellow-400">Фигурки шагают!</h2>
-                        <p className="text-lg text-gray-200">Смотрите на экран ТВ: перемещение по игровому полю.</p>
+                    <div className="text-center glass-card p-6 border-2 border-yellow-400">
+                        <div className="text-5xl mb-4 animate-bounce">🏃‍♂️</div>
+                        <h2 className="text-xl font-black mb-2 text-yellow-400">Фигурки шагают!</h2>
+                        <p className="text-sm text-gray-200">Смотрите на ТВ: перемещение по игровому полю.</p>
                     </div>
                 )}
 
-                {/* 10 СЕКУНД ПОКАЗА ТЕКУЩИХ МЕСТ НА ТЕЛЕФОНЕ */}
                 {status === 'round_standings' && (
-                    <div className="glass-card p-5 border-2 border-yellow-400 space-y-3">
-                        <div className="flex justify-between items-center border-b border-white/20 pb-2">
-                            <h2 className="text-xl font-black text-yellow-400">🏆 Таблица мест</h2>
-                            <span className="font-mono font-bold text-lg text-white">{timer} с</span>
+                    <div className="glass-card p-4 border-2 border-yellow-400 space-y-2 flex flex-col min-h-0">
+                        <div className="flex justify-between items-center border-b border-white/20 pb-1.5 shrink-0">
+                            <h2 className="text-lg font-black text-yellow-400">🏆 Места</h2>
+                            <span className="font-mono font-bold text-base text-white">{timer} с</span>
                         </div>
-                        <div className="text-center py-2 bg-yellow-400/20 rounded-xl border border-yellow-400/50">
-                            <div className="text-xs uppercase text-gray-200">Ваше место сейчас</div>
-                            <div className="text-3xl font-black text-yellow-300">{myRank} место</div>
-                            <div className="text-xs text-gray-300">Клетка {myPlayer.position || 0} из 24</div>
+                        <div className="text-center py-1.5 bg-yellow-400/20 rounded-xl border border-yellow-400/50 shrink-0">
+                            <div className="text-[10px] uppercase text-gray-200">Вы сейчас</div>
+                            <div className="text-2xl font-black text-yellow-300">{myRank} место</div>
+                            <div className="text-[10px] text-gray-300">Клетка {myPlayer.position || 0} из 24</div>
                         </div>
-                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        <div className="space-y-1 overflow-y-auto flex-1 pb-1">
                             {standingsList.map((p, idx) => (
-                                <div key={p.id} className={`flex justify-between items-center px-3 py-2 rounded-lg text-sm ${p.id === playerId ? 'bg-white/20 font-bold' : 'bg-black/40'}`}>
-                                    <span>#{idx + 1} {p.name}</span>
-                                    <span className="font-mono text-yellow-400">Клетка {p.position || 0}</span>
+                                <div key={p.id} className={`flex justify-between items-center px-2 py-1.5 rounded-lg text-xs ${p.id === playerId ? 'bg-white/20 font-bold' : 'bg-black/40'}`}>
+                                    <span className="truncate pr-2">#{idx + 1} {p.name}</span>
+                                    <span className="font-mono text-yellow-400 shrink-0">Поз {p.position || 0}</span>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
 
-                {/* ФИНИШ */}
                 {status === 'finished' && (
-                    <div className="text-center glass-card p-8 border-4 border-yellow-400">
-                        <div className="text-7xl mb-4 animate-bounce">🏆</div>
-                        <h2 className="text-3xl font-extrabold mb-3">Игра окончена</h2>
-                        <p className="text-2xl font-bold">{gameState.winnerId === playerId ? 'ВЫ ПОБЕДИЛИ! 🎉' : 'Смотрите результаты на ТВ'}</p>
+                    <div className="text-center glass-card p-6 border-4 border-yellow-400">
+                        <div className="text-6xl mb-4 animate-bounce">🏆</div>
+                        <h2 className="text-2xl font-extrabold mb-2">Игра окончена</h2>
+                        <p className="text-lg font-bold">{gameState.winnerId === playerId ? 'ВЫ ПОБЕДИЛИ! 🎉' : 'Смотрите результаты на ТВ'}</p>
                     </div>
                 )}
             </div>
