@@ -2,33 +2,27 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Party Board Quiz</title>
-    
-    <!-- Подключение TailwindCSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Внешняя таблица стилей -->
-    <link rel="stylesheet" href="styles.css">
-    
-    <!-- Подключение библиотеки для QR-кода -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    
-    <!-- Подключение React 18 -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    
-    <!-- Подключение Babel для JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Party Board Quiz</title>
+  
+  <!-- Стили проекта -->
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- React & ReactDOM (Production) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js" crossorigin="anonymous"></script>
+  
+  <!-- QRCode.js библиотека -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
 </head>
-<body class="bg-gray-900 text-white overflow-hidden m-0 p-0">
-    <!-- Корневой контейнер с контрактным классом фона -->
-    <div id="root" class="app-bg h-screen w-screen font-sans overflow-hidden"></div>
+<body>
+  <div id="root"></div>
 
-    <!-- Подключение скриптов в строгом порядке -->
-    <script src="questions.js"></script>
-    <script src="sync.js"></script>
-    <script type="text/babel" src="app.js"></script>
+  <!-- Модули приложения -->
+  <script src="questions.js"></script>
+  <script src="sync.js"></script>
+  <script type="text/babel" src="app.js"></script>
 </body>
 </html>
