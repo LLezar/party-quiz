@@ -7,8 +7,6 @@
 (function (global) {
   'use strict';
 
-  const DEFAULT_DB_URL = 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app';
-
   // --- Вспомогательные утилиты ---
   const sanitizeUrl = (url) => (url ? url.trim().replace(/\/+$/, '') : '');
 
@@ -24,11 +22,13 @@
   const isFrameAllBlack = (ctx, width, height) => {
     try {
       const imgData = ctx.getImageData(0, 0, width, height).data;
+      // Проверяем каждую 16-ю точку для ускорения производительности
       for (let i = 0; i < imgData.length; i += 16) {
         const r = imgData[i];
         const g = imgData[i + 1];
         const b = imgData[i + 2];
         const a = imgData[i + 3];
+        // Если пиксель непрозрачный и не полностью черный (сумма каналов > 10)
         if (a > 0 && r + g + b > 10) {
           return false;
         }
@@ -43,7 +43,7 @@
   // --- Сервис синхронизации (GameSync) ---
   const GameSync = {
     roomCode: null,
-    dbUrl: DEFAULT_DB_URL,
+    dbUrl: null,
     broadcastChannel: null,
     onStateChange: null,
     pollingInterval: null,
@@ -53,8 +53,7 @@
     init(roomCode, dbUrl, onStateChangeCallback) {
       this.cleanup();
       this.roomCode = String(roomCode || '').toUpperCase().trim();
-      const rawUrl = sanitizeUrl(dbUrl) || sanitizeUrl(localStorage.getItem('partyquiz_dburl')) || DEFAULT_DB_URL;
-      this.dbUrl = rawUrl;
+      this.dbUrl = sanitizeUrl(dbUrl);
       this.onStateChange = typeof onStateChangeCallback === 'function' ? onStateChangeCallback : () => {};
 
       if (!this.roomCode) {
@@ -77,7 +76,7 @@
         }
       }
 
-      // 2. Инициализация Firebase REST Polling
+      // 2. Инициализация Firebase REST Polling (если указан Firebase URL)
       if (this.dbUrl && this.dbUrl.startsWith('http')) {
         this.fetchRemoteState();
         this.pollingInterval = setInterval(() => {
@@ -124,6 +123,7 @@
           this.handleIncomingState(data, 'firebase');
         }
       } catch (err) {
+        // Ошибки сети не должны крашить игру
         console.debug('[GameSync] Polling fetch skipped/failed:', err.message);
       }
     },
@@ -142,12 +142,12 @@
         }
       }
 
-      // Отправляем в Firebase Realtime Database (используем PATCH, чтобы не затирать параллельно подключившихся игроков)
+      // Отправляем в Firebase Realtime Database
       if (this.dbUrl && this.roomCode) {
         const endpoint = `${this.dbUrl}/rooms/${this.roomCode}.json`;
         try {
           await fetch(endpoint, {
-            method: 'PATCH',
+            method: 'PUT',
             headers: {
               'Content-Type': 'application/json'
             },
@@ -217,6 +217,7 @@
       throw new Error('Video элемент не передан для селфи.');
     }
 
+    // 1. Проверяем готовность видео-потока (защита от снятия до старта)
     if (videoElement.readyState < 2) {
       await new Promise((resolve) => {
         const onLoaded = () => {
@@ -224,10 +225,12 @@
           resolve();
         };
         videoElement.addEventListener('loadeddata', onLoaded);
+        // Защитный таймаут на случай подвисания событий браузера
         setTimeout(resolve, 800);
       });
     }
 
+    // Искусственная пауза 200мс для стабилизации сенсора и автоэкспозиции камеры
     await new Promise((r) => setTimeout(r, 200));
 
     const canvas = optionalCanvas || document.createElement('canvas');
@@ -245,30 +248,35 @@
       const vw = videoElement.videoWidth || 640;
       const vh = videoElement.videoHeight || 480;
 
+      // Расчет координат для центрального квадратного кропа
       const minSide = Math.min(vw, vh);
       const sx = (vw - minSide) / 2;
       const sy = (vh - minSide) / 2;
 
       ctx.clearRect(0, 0, 120, 120);
 
+      // Зеркалим по горизонтали для привычного отображения селфи
       ctx.save();
       ctx.translate(120, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(videoElement, sx, sy, minSide, minSide, 0, 0, 120, 120);
       ctx.restore();
 
+      // Проверка на полностью черный экран
       const isBlack = isFrameAllBlack(ctx, 120, 120);
       if (!isBlack || attempts === maxAttempts) {
         base64Result = canvas.toDataURL('image/jpeg', 0.65);
         break;
       }
 
+      // Если кадр черный, ждем еще 150мс до следующей попытки
       await new Promise((r) => setTimeout(r, 150));
     }
 
     return base64Result;
   };
 
+  // Экспорт в глобальную область видимости
   global.GameSync = GameSync;
   global.captureSelfie = captureSelfie;
 
