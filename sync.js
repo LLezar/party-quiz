@@ -6,6 +6,7 @@ window.GameSync = (function() {
     let currentRole = null;
     let bc = null; // BroadcastChannel
     let firebaseInterval = null;
+    let isPushing = false;
 
     function safeParse(str) {
         try {
@@ -31,6 +32,7 @@ window.GameSync = (function() {
         playerAnswers: {},
         currentRound: 0,
         currentQuestionIndex: 0,
+        currentQuestions: [],
         timerEndTime: 0,
         currentQuestion: null
     };
@@ -53,8 +55,8 @@ window.GameSync = (function() {
 
         for (const key in source) {
             if (RESET_KEYS.includes(key)) {
-                // Если пришел сброс (пустой объект или передан заново список ответов)
-                target[key] = { ...(source[key] || {}) };
+                // Если пришел сброс (null, пустой объект или новый список ответов)
+                target[key] = source[key] ? { ...source[key] } : {};
             } else if (source[key] === null) {
                 target[key] = null;
             } else if (Array.isArray(source[key])) {
@@ -73,6 +75,20 @@ window.GameSync = (function() {
     function mergeState(partialState) {
         if (!partialState || typeof partialState !== 'object') return;
         mergeDeep(localState, partialState);
+    }
+
+    // Специальная функция для полного снимка БД из Firebase:
+    // В Firebase пустые объекты {} удаляются и не приходят в JSON-ответе вообще.
+    function syncFromRemote(remoteData) {
+        if (!remoteData || typeof remoteData !== 'object') return;
+        
+        mergeDeep(localState, remoteData);
+
+        RESET_KEYS.forEach(key => {
+            if (!(key in remoteData) || remoteData[key] === null) {
+                localState[key] = {};
+            }
+        });
     }
 
     function initBroadcastChannel(roomCode) {
@@ -98,12 +114,12 @@ window.GameSync = (function() {
     }
 
     function fetchStateFromFirebase(roomCode) {
-        if (!databaseUrl) return;
+        if (!databaseUrl || isPushing) return;
         fetch(getFirebaseUrl(roomCode))
             .then(res => res.json())
             .then(data => {
-                if (data && typeof data === 'object') {
-                    mergeState(data);
+                if (data && typeof data === 'object' && !isPushing) {
+                    syncFromRemote(data);
                     triggerCallback();
                 }
             })
@@ -111,14 +127,30 @@ window.GameSync = (function() {
     }
 
     function pushStateToFirebase(roomCode, stateToPush) {
-        if (!databaseUrl) return;
-        fetch(getFirebaseUrl(roomCode), {
+        if (!databaseUrl) return Promise.resolve();
+
+        // Подготавливаем payload для Firebase:
+        // Если в RESET_KEYS передан пустой объект {}, заменяем его на null,
+        // чтобы Firebase гарантированно удалил старые вложенные ключи игроков.
+        const firebasePayload = { ...stateToPush };
+        RESET_KEYS.forEach(key => {
+            if (key in firebasePayload && isObject(firebasePayload[key]) && Object.keys(firebasePayload[key]).length === 0) {
+                firebasePayload[key] = null;
+            }
+        });
+
+        isPushing = true;
+        return fetch(getFirebaseUrl(roomCode), {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(stateToPush)
-        }).catch(err => console.error("GameSync Firebase Push Error:", err));
+            body: JSON.stringify(firebasePayload)
+        })
+        .catch(err => console.error("GameSync Firebase Push Error:", err))
+        .finally(() => {
+            isPushing = false;
+        });
     }
 
     function initFirebase(roomCode, dbUrl) {
@@ -136,7 +168,7 @@ window.GameSync = (function() {
         fetchStateFromFirebase(roomCode);
         firebaseInterval = setInterval(() => {
             fetchStateFromFirebase(roomCode);
-        }, 1200);
+        }, 1000);
     }
 
     return {
@@ -178,7 +210,7 @@ window.GameSync = (function() {
         },
 
         updateState: function(partialState) {
-            if (!partialState || typeof partialState !== 'object') return;
+            if (!partialState || typeof partialState !== 'object') return Promise.resolve();
 
             mergeState(partialState);
 
@@ -186,11 +218,12 @@ window.GameSync = (function() {
                 bc.postMessage(partialState);
             }
 
-            if (currentRoomCode && databaseUrl) {
-                pushStateToFirebase(currentRoomCode, partialState);
-            }
-
             triggerCallback();
+
+            if (currentRoomCode && databaseUrl) {
+                return pushStateToFirebase(currentRoomCode, partialState);
+            }
+            return Promise.resolve();
         },
 
         patchPlayer: function(roomCode, playerId, playerData) {
@@ -199,7 +232,7 @@ window.GameSync = (function() {
                     [playerId]: playerData
                 }
             };
-            this.updateState(playerUpdate);
+            return this.updateState(playerUpdate);
         },
 
         getPlayerId: function() {
