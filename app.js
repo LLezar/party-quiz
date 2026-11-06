@@ -195,6 +195,7 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
 
 const StartScreen = () => {
     const [dbUrl, setDbUrl] = useState(localStorage.getItem('firebaseDbUrl') || 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app');
+    const [countdown, setCountdown] = useState(30);
 
     const handleHost = useCallback(() => {
         localStorage.setItem('firebaseDbUrl', dbUrl);
@@ -202,6 +203,20 @@ const StartScreen = () => {
         const baseUrl = window.location.origin + window.location.pathname;
         window.location.href = `${baseUrl}?role=host&room=${room}&db=${encodeURIComponent(dbUrl)}`;
     }, [dbUrl]);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCountdown(prev => {
+                if (prev <= 1) {
+                    clearInterval(timer);
+                    handleHost();
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [handleHost]);
 
     const handlePlayer = () => {
         localStorage.setItem('firebaseDbUrl', dbUrl);
@@ -218,6 +233,9 @@ const StartScreen = () => {
                 <h1 className="text-5xl font-black mb-4 text-yellow-300 drop-shadow-md">
                     Party Board Quiz
                 </h1>
+                <div className="auto-timer-badge text-sm font-bold text-yellow-300 bg-black/40 border-2 border-black px-4 py-2 rounded-full inline-block">
+                    Автоматическое создание комнаты через: {countdown} сек...
+                </div>
                 <div className="text-left">
                     <label className="block text-sm mb-2 text-white font-bold">Firebase Realtime DB URL:</label>
                     <input 
@@ -243,14 +261,43 @@ const TVApp = ({ roomId, dbUrl }) => {
     const [walkingPlayerId, setWalkingPlayerId] = useState(null);
     const [isAnimatingRoundMoves, setIsAnimatingRoundMoves] = useState(false);
     const [timeLeft, setTimeLeft] = useState(0);
+    const [lobbyCountdown, setLobbyCountdown] = useState(15);
     const qrRef = useRef(null);
 
     const roundCorrectRef = useRef({});
     const currentQuestionsRef = useRef([]);
     const nextPhaseTimeoutRef = useRef(null);
+    const lobbyTimerRef = useRef(null);
 
     const baseUrl = window.location.origin + window.location.pathname;
     const joinUrl = `${baseUrl}?role=player&room=${roomId}${dbUrl ? `&db=${encodeURIComponent(dbUrl)}` : ''}`;
+
+    const startNewRound = useCallback(() => {
+        if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
+
+        const currentPlayed = window.GameSync?._getState()?.playedCategories || gameState?.playedCategories || [];
+        const allCategories = window.QuestionBank?.categories || [];
+        
+        let availableCategories = allCategories.filter(c => !currentPlayed.includes(c.id));
+        if (availableCategories.length < 3) availableCategories = allCategories;
+        const categories = [...availableCategories].sort(() => 0.5 - Math.random()).slice(0, 3);
+
+        roundCorrectRef.current = {};
+        Object.keys(gameState?.players || {}).forEach(pid => {
+            roundCorrectRef.current[pid] = 0;
+        });
+
+        window.GameSync.updateState({
+            phase: 'category_vote',
+            timerEndTime: Date.now() + 10000,
+            categoriesToVote: categories,
+            categoryVotes: {},
+            playerAnswers: {},
+            currentQuestionIndex: 0,
+            currentQuestions: [],
+            roundMoves: {}
+        });
+    }, [gameState?.playedCategories, gameState?.players]);
 
     useEffect(() => {
         try {
@@ -269,15 +316,51 @@ const TVApp = ({ roomId, dbUrl }) => {
                 currentRound: 0,
                 currentQuestionIndex: 0,
                 currentQuestions: [],
-                players: {}
+                players: {},
+                roundMoves: {}
             });
         } catch (err) {
             console.error("Init host sync error", err);
         }
         return () => {
             if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
+            if (lobbyTimerRef.current) clearInterval(lobbyTimerRef.current);
         };
     }, [roomId, dbUrl]);
+
+    // Авто-таймер лобби на ТВ
+    useEffect(() => {
+        const numPlayers = Object.keys(gameState?.players || {}).length;
+        if (gameState?.phase === 'lobby' && numPlayers >= 1) {
+            if (!lobbyTimerRef.current) {
+                setLobbyCountdown(15);
+                lobbyTimerRef.current = setInterval(() => {
+                    setLobbyCountdown(prev => {
+                        if (prev <= 1) {
+                            clearInterval(lobbyTimerRef.current);
+                            lobbyTimerRef.current = null;
+                            startNewRound();
+                            return 0;
+                        }
+                        return prev - 1;
+                    });
+                }, 1000);
+            }
+        } else {
+            if (lobbyTimerRef.current) {
+                clearInterval(lobbyTimerRef.current);
+                lobbyTimerRef.current = null;
+            }
+            setLobbyCountdown(15);
+        }
+
+        return () => {
+            if (lobbyTimerRef.current) {
+                clearInterval(lobbyTimerRef.current);
+                lobbyTimerRef.current = null;
+            }
+        };
+    }, [gameState?.phase, gameState?.players, startNewRound]);
 
     useEffect(() => {
         if (!gameState?.players || isAnimatingRoundMoves) return;
@@ -323,32 +406,6 @@ const TVApp = ({ roomId, dbUrl }) => {
         return () => clearInterval(timerInterval);
     }, [gameState?.timerEndTime, gameState?.phase, gameState?.currentQuestionIndex]);
 
-    const startNewRound = () => {
-        if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
-
-        const played = gameState?.playedCategories || [];
-        const allCategories = window.QuestionBank?.categories || [];
-        
-        let availableCategories = allCategories.filter(c => !played.includes(c.id));
-        if (availableCategories.length < 3) availableCategories = allCategories;
-        const categories = [...availableCategories].sort(() => 0.5 - Math.random()).slice(0, 3);
-
-        roundCorrectRef.current = {};
-        Object.keys(gameState?.players || {}).forEach(pid => {
-            roundCorrectRef.current[pid] = 0;
-        });
-
-        window.GameSync.updateState({
-            phase: 'category_vote',
-            timerEndTime: Date.now() + 10000,
-            categoriesToVote: categories,
-            categoryVotes: {},
-            playerAnswers: {},
-            currentQuestionIndex: 0,
-            currentQuestions: []
-        });
-    };
-
     const handleVoteFinished = useCallback(() => {
         if (!gameState) return;
         const votes = gameState.categoryVotes || {};
@@ -388,6 +445,11 @@ const TVApp = ({ roomId, dbUrl }) => {
         await window.GameSync.updateState({ phase: 'board_move', timerEndTime: 0 });
 
         const playersCopy = JSON.parse(JSON.stringify(gameState?.players || {}));
+        const initialPositions = {};
+        Object.keys(playersCopy).forEach(pid => {
+            initialPositions[pid] = playersCopy[pid].position || 0;
+        });
+
         for (const pid of Object.keys(playersCopy)) {
             const steps = roundCorrectRef.current[pid] || 0;
             let currentPos = playersCopy[pid].position || 0;
@@ -406,15 +468,25 @@ const TVApp = ({ roomId, dbUrl }) => {
             playersCopy[pid].score = (playersCopy[pid].score || 0) + steps;
         }
 
-        await window.GameSync.updateState({ players: playersCopy });
+        const sorted = getSortedStandings(playersCopy);
+        const roundMoves = {};
+        sorted.forEach((p, index) => {
+            roundMoves[p.id] = {
+                rank: index + 1,
+                stepsGained: roundCorrectRef.current[p.id] || 0,
+                previousPos: initialPositions[p.id] || 0,
+                currentPos: p.position || 0
+            };
+        });
+
         setIsAnimatingRoundMoves(false);
 
-        const winner = Object.values(playersCopy).find(p => (p.position || 0) >= TOTAL_CELLS - 1);
-        if (winner) {
-            await window.GameSync.updateState({ phase: 'finish', winnerId: winner.id, players: playersCopy });
-        } else {
-            startNewRound();
-        }
+        await window.GameSync.updateState({
+            phase: 'round_summary',
+            timerEndTime: Date.now() + 6000,
+            roundMoves,
+            players: playersCopy
+        });
     };
 
     const handleShowResultPhase = useCallback(() => {
@@ -468,12 +540,21 @@ const TVApp = ({ roomId, dbUrl }) => {
             if (isTimeUp || (numPlayers > 0 && numAnswers >= numPlayers)) {
                 handleShowResultPhase();
             }
+        } else if (phase === 'round_summary') {
+            if (isTimeUp) {
+                const winner = Object.values(players || {}).find(p => (p.position || 0) >= TOTAL_CELLS - 1);
+                if (winner) {
+                    window.GameSync.updateState({ phase: 'finish', winnerId: winner.id });
+                } else {
+                    startNewRound();
+                }
+            }
         }
-    }, [gameState, handleVoteFinished, handleShowResultPhase]);
+    }, [gameState, handleVoteFinished, handleShowResultPhase, startNewRound]);
 
     if (!gameState) return <div className="flex items-center justify-center h-full text-3xl font-black">Загрузка игры...</div>;
 
-    const { phase, categoriesToVote, currentQuestionIndex, players, winnerId, categoryVotes, playerAnswers } = gameState;
+    const { phase, categoriesToVote, currentQuestionIndex, players, winnerId, categoryVotes, playerAnswers, roundMoves } = gameState;
     const playersList = Object.values(players || {});
     const questionsList = currentQuestionsRef.current.length ? currentQuestionsRef.current : (gameState.currentQuestions || []);
     const currentQ = questionsList[currentQuestionIndex] || null;
@@ -545,6 +626,11 @@ const TVApp = ({ roomId, dbUrl }) => {
                                 <a href={joinUrl} className="text-yellow-300 hover:text-yellow-200 underline font-mono text-xs break-all">{joinUrl}</a>
                             </div>
                         </div>
+                        {playersList.length >= 1 && (
+                            <div className="auto-timer-badge text-sm font-bold text-black bg-yellow-300 border-2 border-black px-4 py-2 rounded-xl mb-4 animate-pulse">
+                                Игра начнется автоматически через {lobbyCountdown} сек (или подключите еще игроков)
+                            </div>
+                        )}
                         <h3 className="text-xl mb-3 font-bold text-yellow-200">Игроки ({playersList.length}/4):</h3>
                         <div className="flex justify-center gap-6 mb-6 min-h-[90px]">
                             {playersList.length === 0 && <p className="text-yellow-100 self-center">Ожидание подключения с телефона...</p>}
@@ -572,7 +658,7 @@ const TVApp = ({ roomId, dbUrl }) => {
                             {(categoriesToVote || []).map((cat, i) => (
                                 <div key={i} className="glass-card p-6 bg-indigo-900/60 flex flex-col items-center rounded-2xl border-4 border-black">
                                     <span className="text-6xl mb-4">{cat.icon}</span>
-                                    <h3 className="text-2xl font-bold mb-4">{cat.name}</h3>
+                                    <h3 className="category-card-title text-2xl font-bold mb-4">{cat.name}</h3>
                                     <div className="flex gap-2 min-h-[40px] items-center">
                                         {playersList.filter(p => categoryVotes?.[p.id] === cat.id).map(p => (
                                             <div key={p.id} className="w-10 h-10 rounded-full border-2 border-black overflow-hidden bg-white flex items-center justify-center shadow-md" style={{ borderColor: p.color }}>
@@ -630,6 +716,48 @@ const TVApp = ({ roomId, dbUrl }) => {
                                     </div>
                                 );
                             })}
+                        </div>
+                    </div>
+                )}
+
+                {phase === 'round_summary' && (
+                    <div className="round-summary-modal fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6">
+                        <div className="glass-card max-w-2xl w-full p-8 text-center">
+                            <h2 className="text-4xl font-black mb-2 text-yellow-300">Итоги раунда</h2>
+                            <p className="text-lg text-yellow-100 mb-4">Фигурки продвинулись вперед!</p>
+                            <div className="timer-track mb-6">
+                                <div className="timer-bar" style={{ width: `${(timeLeft / 6) * 100}%` }}></div>
+                            </div>
+                            <div className="space-y-3 mb-6">
+                                {getSortedStandings(players).map((p, idx) => {
+                                    const moveData = roundMoves?.[p.id] || {
+                                        rank: idx + 1,
+                                        stepsGained: roundCorrectRef.current[p.id] || 0,
+                                        currentPos: p.position || 0
+                                    };
+                                    const badgeClass = moveData.rank === 1 ? 'bg-yellow-400 text-black' : moveData.rank === 2 ? 'bg-slate-300 text-black' : moveData.rank === 3 ? 'bg-amber-600 text-white' : 'bg-indigo-700 text-white';
+                                    return (
+                                        <div key={p.id} className="round-summary-item flex items-center justify-between p-3 rounded-2xl bg-indigo-900/80 border-3 border-black">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`round-summary-badge w-10 h-10 rounded-full flex items-center justify-center font-black text-xl border-2 border-black ${badgeClass}`}>
+                                                    {moveData.rank}
+                                                </div>
+                                                <div className="w-12 h-12 rounded-full border-3 border-black overflow-hidden bg-white flex items-center justify-center" style={{ backgroundColor: p.color }}>
+                                                    {isSafeImageSrc(p.selfie) ? <img src={p.selfie} className="w-full h-full object-cover" /> : <span className="text-2xl text-black">{p.selfie || '👤'}</span>}
+                                                </div>
+                                                <div className="text-left">
+                                                    <div className="font-black text-xl text-white">{p.name}</div>
+                                                    <div className="text-xs text-yellow-200 font-bold">Клетка: {Math.min(TOTAL_CELLS, (moveData.currentPos || 0) + 1)} / {TOTAL_CELLS}</div>
+                                                </div>
+                                            </div>
+                                            <div className="round-summary-steps text-xl font-black px-4 py-1.5 rounded-xl border-2 border-black bg-lime-400 text-black">
+                                                +{moveData.stepsGained} {moveData.stepsGained === 1 ? 'клетка' : (moveData.stepsGained >= 2 && moveData.stepsGained <= 4) ? 'клетки' : 'клеток'}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="text-2xl font-mono font-black text-yellow-300">Следующий раунд через {timeLeft} сек</div>
                         </div>
                     </div>
                 )}
@@ -799,7 +927,7 @@ const MobileApp = ({ roomId, dbUrl }) => {
         );
     }
 
-    const { phase, categoriesToVote, currentQuestionIndex, currentQuestions, players, categoryVotes, playerAnswers } = gameState;
+    const { phase, categoriesToVote, currentQuestionIndex, currentQuestions, players, categoryVotes, playerAnswers, roundMoves } = gameState;
     const myPlayer = players[playerId];
     const myRank = getSortedStandings(players).findIndex(p => p.id === playerId) + 1;
     const hasVoted = Boolean(categoryVotes?.[playerId]);
@@ -833,7 +961,7 @@ const MobileApp = ({ roomId, dbUrl }) => {
                         <h2 className="text-2xl font-black text-center mb-2">Выберите тему:</h2>
                         {(categoriesToVote || []).map(cat => (
                             <button key={cat.id} onClick={() => sendVote(cat.id)} disabled={hasVoted} className={`glass-card flex items-center gap-4 text-xl font-black w-full p-4 transition-all ${categoryVotes?.[playerId] === cat.id ? '!bg-yellow-400 !text-black !border-black' : ''} ${hasVoted && categoryVotes?.[playerId] !== cat.id ? 'opacity-40 grayscale' : ''}`}>
-                                <span className="text-4xl">{cat.icon}</span><span>{cat.name}</span>
+                                <span className="text-4xl">{cat.icon}</span><span className="category-card-title">{cat.name}</span>
                             </button>
                         ))}
                     </div>
@@ -873,6 +1001,28 @@ const MobileApp = ({ roomId, dbUrl }) => {
                     <div className="text-center glass-card p-8 border-4 border-black">
                         <div className="text-6xl mb-4 animate-bounce">🏃‍♂️</div>
                         <h2 className="text-2xl font-black mb-2 text-yellow-300">Фигурки шагают!</h2>
+                    </div>
+                )}
+
+                {phase === 'round_summary' && (
+                    <div className="round-summary-modal flex flex-col justify-center items-center text-center glass-card p-6 border-4 border-black my-auto">
+                        <div className="text-5xl mb-3 animate-bounce">📊</div>
+                        <h2 className="text-3xl font-black mb-4 text-yellow-300">Итоги раунда</h2>
+                        {roundMoves?.[playerId] ? (
+                            <div className="w-full space-y-3">
+                                <div className="round-summary-badge inline-flex items-center justify-center px-4 py-2 rounded-xl text-xl font-black bg-yellow-400 text-black border-2 border-black mb-2">
+                                    {roundMoves[playerId].rank} место
+                                </div>
+                                <div className="round-summary-steps text-2xl font-black py-2 px-4 rounded-xl border-2 border-black bg-lime-400 text-black">
+                                    +{roundMoves[playerId].stepsGained} {roundMoves[playerId].stepsGained === 1 ? 'шаг' : 'шага'}
+                                </div>
+                                <div className="text-lg font-bold text-white bg-indigo-900/70 p-3 rounded-xl border-2 border-black">
+                                    Текущая клетка: <span className="text-yellow-300 font-black">{Math.min(TOTAL_CELLS, (roundMoves[playerId].currentPos || 0) + 1)}</span> из {TOTAL_CELLS}
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-lg font-bold">Подведение итогов...</p>
+                        )}
                     </div>
                 )}
 
