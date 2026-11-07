@@ -265,10 +265,11 @@ window.GameSync = (function() {
         },
 
         getPlayerId: function() {
-            var playerId = safeGetStorage('tv_game_player_id');
+            var playerId = safeGetStorage('tv_game_player_id') || safeGetStorage('playerId');
             if (!playerId) {
                 playerId = 'player_' + Math.random().toString(36).substring(2, 9);
                 safeSetStorage('tv_game_player_id', playerId);
+                safeSetStorage('playerId', playerId);
             }
             return playerId;
         },
@@ -280,7 +281,7 @@ window.GameSync = (function() {
 })();
 
 // Захват квадратного селфи высокого качества (256x256, JPEG 0.85) на нативных промисах без async/await
-window.captureSelfie = function(videoElement) {
+window.captureSelfie = function(videoElement, customSize, customQuality) {
     return new Promise(function(resolve) {
         if (!videoElement) {
             resolve(null);
@@ -297,14 +298,18 @@ window.captureSelfie = function(videoElement) {
 
         try {
             var canvas = document.createElement('canvas');
-            var targetSize = 256;
+            var targetSize = (customSize !== undefined && customSize !== null) ? customSize : 256;
+            var quality = (customQuality !== undefined && customQuality !== null) ? customQuality : 0.85;
+
             canvas.width = targetSize;
             canvas.height = targetSize;
             var ctx = canvas.getContext('2d');
 
             // Высокое качество интерполяции при отрисовке
             ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
+            if ('imageSmoothingQuality' in ctx) {
+                ctx.imageSmoothingQuality = 'high';
+            }
 
             var minDim = Math.min(videoWidth, videoHeight);
             var startX = (videoWidth - minDim) / 2;
@@ -316,7 +321,7 @@ window.captureSelfie = function(videoElement) {
                 0, 0, targetSize, targetSize
             );
 
-            resolve(canvas.toDataURL('image/jpeg', 0.85));
+            resolve(canvas.toDataURL('image/jpeg', quality));
         } catch (e) {
             console.error("captureSelfie error:", e);
             resolve(null);
