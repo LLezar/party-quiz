@@ -6,7 +6,7 @@ window.GameSync = (function() {
     var currentRole = null;
     var bc = null; // BroadcastChannel для мгновенного обмена между вкладками одного устройства
     var firebaseInterval = null;
-    var isPushing = false;
+    var activePushCount = 0;
 
     function safeGetStorage(key) {
         try {
@@ -69,7 +69,7 @@ window.GameSync = (function() {
         return (item && typeof item === 'object' && !Array.isArray(item));
     }
 
-    // Ключи, которые при передаче пустого объекта {} должны очищаться, а не мерджиться
+    // Ключи, которые при сбросе раунда/вопроса хостом должны очищаться
     var RESET_KEYS = ['playerAnswers', 'categoryVotes', 'roundMoves'];
 
     function mergeDeep(target, source) {
@@ -79,8 +79,21 @@ window.GameSync = (function() {
             if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
 
             if (RESET_KEYS.indexOf(key) !== -1) {
-                // Если пришел сброс (null, пустой объект или новый список)
-                target[key] = source[key] ? Object.assign({}, source[key]) : {};
+                if (source[key] === null) {
+                    target[key] = {};
+                } else if (isObject(source[key])) {
+                    if (!target[key] || typeof target[key] !== 'object') {
+                        target[key] = {};
+                    }
+                    // Мягкое объединение ответов/голосов: не затираем ключи других игроков
+                    for (var subKey in source[key]) {
+                        if (Object.prototype.hasOwnProperty.call(source[key], subKey)) {
+                            target[key][subKey] = source[key][subKey];
+                        }
+                    }
+                } else {
+                    target[key] = source[key];
+                }
             } else if (source[key] === null) {
                 target[key] = null;
             } else if (Array.isArray(source[key])) {
@@ -91,7 +104,6 @@ window.GameSync = (function() {
                 }
                 mergeDeep(target[key], source[key]);
             } else {
-                // Строки (включая color, selfie, cheerAudio), числа, булевы значения
                 target[key] = source[key];
             }
         }
@@ -102,14 +114,20 @@ window.GameSync = (function() {
         mergeDeep(localState, partialState);
     }
 
-    // Полный снимок БД из Firebase: пустые объекты {} в Firebase удаляются и не приходят в JSON
+    // Полный снимок БД из Firebase: пустые объекты {} в Firebase RTDB удаляются и возвращаются как null
     function syncFromRemote(remoteData) {
         if (!remoteData || typeof remoteData !== 'object') return;
-        
+
+        var remoteQIndex = remoteData.currentQuestionIndex !== undefined ? remoteData.currentQuestionIndex : localState.currentQuestionIndex;
+        var remotePhase = remoteData.phase || localState.phase;
+        var isNewQuestionOrPhase = (remoteQIndex !== localState.currentQuestionIndex) || (remotePhase !== localState.phase);
+
         mergeDeep(localState, remoteData);
 
         RESET_KEYS.forEach(function(key) {
             if (!(key in remoteData) || remoteData[key] === null) {
+                localState[key] = {};
+            } else if (isNewQuestionOrPhase && (!remoteData[key] || Object.keys(remoteData[key]).length === 0)) {
                 localState[key] = {};
             }
         });
@@ -139,35 +157,44 @@ window.GameSync = (function() {
     }
 
     function fetchStateFromFirebase(roomCode) {
-        if (!databaseUrl || isPushing) return;
+        if (!databaseUrl) return;
         fetch(getFirebaseUrl(roomCode))
             .then(function(res) {
                 return res.json();
             })
             .then(function(data) {
-                if (data && typeof data === 'object' && !isPushing) {
+                if (data && typeof data === 'object') {
                     syncFromRemote(data);
                     triggerCallback();
                 }
             })
-            .catch(function() {});
+            .catch(function(err) {
+                // Игнорируем сетевые сбои отдельных тактов поллинга
+            });
     }
 
     function pushStateToFirebase(roomCode, stateToPush) {
         if (!databaseUrl) return Promise.resolve();
 
-        // Подготавливаем payload для Firebase:
-        // Если в RESET_KEYS передан пустой объект {}, заменяем его на null,
-        // чтобы Firebase гарантированно удалил старые вложенные ключи
         var firebasePayload = Object.assign({}, stateToPush);
+        var resetPromises = [];
+
+        // Если хост очищает playerAnswers или categoryVotes, заменяем на null и шлем точечный PUT
         RESET_KEYS.forEach(function(key) {
             if (key in firebasePayload && isObject(firebasePayload[key]) && Object.keys(firebasePayload[key]).length === 0) {
                 firebasePayload[key] = null;
+                resetPromises.push(
+                    fetch(getFirebaseUrl(roomCode, key), {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: 'null'
+                    }).catch(function() {})
+                );
             }
         });
 
-        isPushing = true;
-        return fetch(getFirebaseUrl(roomCode), {
+        activePushCount++;
+        var mainPush = fetch(getFirebaseUrl(roomCode), {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json'
@@ -175,12 +202,14 @@ window.GameSync = (function() {
             body: JSON.stringify(firebasePayload)
         })
         .then(function(res) {
-            isPushing = false;
+            activePushCount = Math.max(0, activePushCount - 1);
             return res;
         }, function(err) {
             console.error("GameSync Firebase Push Error:", err);
-            isPushing = false;
+            activePushCount = Math.max(0, activePushCount - 1);
         });
+
+        return Promise.all(resetPromises.concat([mainPush]));
     }
 
     function initFirebase(roomCode, dbUrl) {
@@ -245,7 +274,9 @@ window.GameSync = (function() {
             mergeState(partialState);
 
             if (bc) {
-                bc.postMessage(partialState);
+                try {
+                    bc.postMessage(partialState);
+                } catch (e) {}
             }
 
             triggerCallback();
@@ -256,12 +287,118 @@ window.GameSync = (function() {
             return Promise.resolve();
         },
 
+        // Атомарная отправка голоса за категорию: не затирает голоса других игроков
+        patchVote: function(roomCode, playerId, categoryId) {
+            var targetRoom = roomCode || currentRoomCode;
+            if (!playerId) return Promise.resolve();
+
+            if (!localState.categoryVotes) {
+                localState.categoryVotes = {};
+            }
+            localState.categoryVotes[playerId] = categoryId;
+
+            var updateObj = { categoryVotes: {} };
+            updateObj.categoryVotes[playerId] = categoryId;
+
+            if (bc) {
+                try { bc.postMessage(updateObj); } catch (e) {}
+            }
+
+            triggerCallback();
+
+            if (targetRoom && databaseUrl) {
+                activePushCount++;
+                var payload = {};
+                payload[playerId] = categoryId;
+                return fetch(getFirebaseUrl(targetRoom, 'categoryVotes'), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(function(res) {
+                    activePushCount = Math.max(0, activePushCount - 1);
+                    return res;
+                }).catch(function(err) {
+                    activePushCount = Math.max(0, activePushCount - 1);
+                    console.error("GameSync patchVote Error:", err);
+                });
+            }
+            return Promise.resolve();
+        },
+
+        // Атомарная отправка ответа на вопрос: не затирает ответы других игроков
+        patchAnswer: function(roomCode, playerId, answerIndex) {
+            var targetRoom = roomCode || currentRoomCode;
+            if (!playerId) return Promise.resolve();
+
+            if (!localState.playerAnswers) {
+                localState.playerAnswers = {};
+            }
+            localState.playerAnswers[playerId] = answerIndex;
+
+            var updateObj = { playerAnswers: {} };
+            updateObj.playerAnswers[playerId] = answerIndex;
+
+            if (bc) {
+                try { bc.postMessage(updateObj); } catch (e) {}
+            }
+
+            triggerCallback();
+
+            if (targetRoom && databaseUrl) {
+                activePushCount++;
+                var payload = {};
+                payload[playerId] = answerIndex;
+                return fetch(getFirebaseUrl(targetRoom, 'playerAnswers'), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(function(res) {
+                    activePushCount = Math.max(0, activePushCount - 1);
+                    return res;
+                }).catch(function(err) {
+                    activePushCount = Math.max(0, activePushCount - 1);
+                    console.error("GameSync patchAnswer Error:", err);
+                });
+            }
+            return Promise.resolve();
+        },
+
+        // Атомарное обновление профиля игрока в списке players
         patchPlayer: function(roomCode, playerId, playerData) {
-            var playerUpdate = {
-                players: {}
-            };
-            playerUpdate.players[playerId] = playerData;
-            return this.updateState(playerUpdate);
+            var targetRoom = roomCode || currentRoomCode;
+            if (!playerId) return Promise.resolve();
+
+            if (!localState.players) {
+                localState.players = {};
+            }
+            localState.players[playerId] = playerData;
+
+            var updateObj = { players: {} };
+            updateObj.players[playerId] = playerData;
+
+            if (bc) {
+                try { bc.postMessage(updateObj); } catch (e) {}
+            }
+
+            triggerCallback();
+
+            if (targetRoom && databaseUrl) {
+                activePushCount++;
+                var payload = {};
+                payload[playerId] = playerData;
+                return fetch(getFirebaseUrl(targetRoom, 'players'), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(function(res) {
+                    activePushCount = Math.max(0, activePushCount - 1);
+                    return res;
+                }).catch(function(err) {
+                    activePushCount = Math.max(0, activePushCount - 1);
+                    console.error("GameSync patchPlayer Error:", err);
+                });
+            }
+            return Promise.resolve();
         },
 
         getPlayerId: function() {
@@ -280,7 +417,7 @@ window.GameSync = (function() {
     };
 })();
 
-// Захват квадратного селфи высокого качества (256x256, JPEG 0.85) на нативных промисах без async/await
+// Захват квадратного селфи с фронтальной камеры: вырезает квадрат по центру, сжимает до 120x120 JPEG 0.65
 window.captureSelfie = function(videoElement, customSize, customQuality) {
     return new Promise(function(resolve) {
         if (!videoElement) {
@@ -298,14 +435,13 @@ window.captureSelfie = function(videoElement, customSize, customQuality) {
 
         try {
             var canvas = document.createElement('canvas');
-            var targetSize = (customSize !== undefined && customSize !== null) ? customSize : 256;
-            var quality = (customQuality !== undefined && customQuality !== null) ? customQuality : 0.85;
+            var targetSize = (customSize !== undefined && customSize !== null) ? customSize : 120;
+            var quality = (customQuality !== undefined && customQuality !== null) ? customQuality : 0.65;
 
             canvas.width = targetSize;
             canvas.height = targetSize;
             var ctx = canvas.getContext('2d');
 
-            // Высокое качество интерполяции при отрисовке
             ctx.imageSmoothingEnabled = true;
             if ('imageSmoothingQuality' in ctx) {
                 ctx.imageSmoothingQuality = 'high';
