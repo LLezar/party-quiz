@@ -4,7 +4,7 @@ window.GameSync = (function() {
     let currentRoomCode = null;
     let databaseUrl = null;
     let currentRole = null;
-    let bc = null; // BroadcastChannel
+    let bc = null; // BroadcastChannel для мгновенного обмена между вкладками одного устройства
     let firebaseInterval = null;
     let isPushing = false;
 
@@ -28,13 +28,16 @@ window.GameSync = (function() {
     let localState = {
         phase: 'lobby',
         players: {},
+        categoriesToVote: [],
+        playedCategories: [],
         categoryVotes: {},
         playerAnswers: {},
         currentRound: 0,
         currentQuestionIndex: 0,
         currentQuestions: [],
         timerEndTime: 0,
-        currentQuestion: null
+        roundMoves: {},
+        winnerId: null
     };
 
     function triggerCallback() {
@@ -48,14 +51,14 @@ window.GameSync = (function() {
     }
 
     // Ключи, которые при передаче пустого объекта {} должны очищаться, а не мерджиться
-    const RESET_KEYS = ['playerAnswers', 'categoryVotes'];
+    const RESET_KEYS = ['playerAnswers', 'categoryVotes', 'roundMoves'];
 
     function mergeDeep(target, source) {
         if (!isObject(target) || !isObject(source)) return;
 
         for (const key in source) {
             if (RESET_KEYS.includes(key)) {
-                // Если пришел сброс (null, пустой объект или новый список ответов)
+                // Если пришел сброс (null, пустой объект или новый список)
                 target[key] = source[key] ? { ...source[key] } : {};
             } else if (source[key] === null) {
                 target[key] = null;
@@ -67,6 +70,7 @@ window.GameSync = (function() {
                 }
                 mergeDeep(target[key], source[key]);
             } else {
+                // Строки (включая color, selfie, cheerAudio), числа, булевы значения
                 target[key] = source[key];
             }
         }
@@ -77,8 +81,7 @@ window.GameSync = (function() {
         mergeDeep(localState, partialState);
     }
 
-    // Специальная функция для полного снимка БД из Firebase:
-    // В Firebase пустые объекты {} удаляются и не приходят в JSON-ответе вообще.
+    // Полный снимок БД из Firebase: пустые объекты {} в Firebase удаляются и не приходят в JSON
     function syncFromRemote(remoteData) {
         if (!remoteData || typeof remoteData !== 'object') return;
         
@@ -131,7 +134,7 @@ window.GameSync = (function() {
 
         // Подготавливаем payload для Firebase:
         // Если в RESET_KEYS передан пустой объект {}, заменяем его на null,
-        // чтобы Firebase гарантированно удалил старые вложенные ключи игроков.
+        // чтобы Firebase гарантированно удалил старые вложенные ключи
         const firebasePayload = { ...stateToPush };
         RESET_KEYS.forEach(key => {
             if (key in firebasePayload && isObject(firebasePayload[key]) && Object.keys(firebasePayload[key]).length === 0) {
@@ -248,20 +251,24 @@ window.GameSync = (function() {
     };
 })();
 
-// Захват квадратного селфи без искажения пропорций
-window.captureSelfie = function(videoElement) {
+// Захват четкого квадратного селфи высокого качества (256x256, JPEG 0.85)
+window.captureSelfie = async function(videoElement) {
     if (!videoElement) return null;
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const targetSize = 120;
-    canvas.width = targetSize;
-    canvas.height = targetSize;
 
     const videoWidth = videoElement.videoWidth || 0;
     const videoHeight = videoElement.videoHeight || 0;
 
     if (videoWidth === 0 || videoHeight === 0) return null;
+
+    const canvas = document.createElement('canvas');
+    const targetSize = 256;
+    canvas.width = targetSize;
+    canvas.height = targetSize;
+    const ctx = canvas.getContext('2d');
+
+    // Высокое качество интерполяции при отрисовке
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
     const minDim = Math.min(videoWidth, videoHeight);
     const startX = (videoWidth - minDim) / 2;
@@ -273,5 +280,5 @@ window.captureSelfie = function(videoElement) {
         0, 0, targetSize, targetSize
     );
 
-    return canvas.toDataURL('image/jpeg', 0.65);
+    return canvas.toDataURL('image/jpeg', 0.85);
 };

@@ -504,6 +504,7 @@ p, span, label {
   justify-content: center;
   font-size: 2.2rem;
   overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
 }
 
 .pawn-selfie-head img {
@@ -574,6 +575,15 @@ p, span, label {
 .pawn-jumping,
 .pawn-walking {
   animation: pawnJump 0.55s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
+}
+
+/* Увеличение головы в 4 раза при шаге: парит строго выше туловища без перекрытия тела */
+.pawn-walking .pawn-selfie-head {
+  transform: scale(3.8) translateY(-26px);
+  z-index: 999;
+  transform-origin: bottom center;
+  box-shadow: 0 0 20px var(--player-color, #ffffff), 4px 4px 0 #000000;
+  animation: none;
 }
 
 @keyframes headBob {
@@ -650,24 +660,31 @@ p, span, label {
 }
 
 /* ==========================================================================
-   ВЫБОР ЦВЕТОВ И СЕЛФИ В ЛОББИ
+   ВЫБОР ЦВЕТОВ, ЗАПИСЬ АУДИО И СЕЛФИ В ЛОББИ
    ========================================================================== */
 
 .color-picker-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
   width: 100%;
+  justify-items: center;
 }
 
 .color-select-btn {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--radius-round);
   border: 3.5px solid #000000;
   cursor: pointer;
   box-shadow: 3px 3px 0px #000000;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 1.2rem;
+  color: #ffffff;
 }
 
 .color-select-btn:hover:not(:disabled) {
@@ -676,9 +693,10 @@ p, span, label {
 }
 
 .color-select-btn.selected {
-  border-color: #ffffff !important;
-  box-shadow: 4px 4px 0px #000000, 0 0 16px #ffffff !important;
-  transform: scale(1.15);
+  border: 4px solid #ffffff !important;
+  box-shadow: 0 0 18px #ffffff, 4px 4px 0px #000000 !important;
+  transform: scale(1.2);
+  z-index: 5;
 }
 
 .color-select-btn:disabled,
@@ -688,6 +706,49 @@ p, span, label {
   transform: scale(0.9) !important;
   filter: grayscale(80%) !important;
   box-shadow: none !important;
+}
+
+/* Кнопка записи победного клича игрока */
+.audio-record-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background-color: #3730a3;
+  color: #ffffff;
+  border: 3px solid #000000;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 3px 3px 0px #000000;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+}
+
+.audio-record-btn:hover:not(:disabled) {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px #000000;
+  background-color: #4338ca;
+}
+
+.audio-record-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #000000;
+}
+
+.audio-record-active {
+  background-color: #ff4757 !important;
+  color: #ffffff !important;
+  animation: pulseRecording 0.8s infinite alternate ease-in-out;
+  border-color: #ffffff !important;
+  box-shadow: 0 0 14px #ff4757, 4px 4px 0px #000000 !important;
+}
+
+@keyframes pulseRecording {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.06); }
 }
 
 .camera-modal {
@@ -746,8 +807,26 @@ input[type="text"]:focus {
 }
 
 /* ==========================================================================
-   НОВЫЕ КОНТРАКТНЫЕ КЛАССЫ: КАТЕГОРИИ, ИТОГИ РАУНДА И АВТО-ТАЙМЕР
+   КОНТРАКТНЫЕ КЛАССЫ: КАТЕГОРИИ (6 ШТ.), ИТОГИ РАУНДА И АВТО-ТАЙМЕР
    ========================================================================== */
+
+/* Сетка выбора 6 категорий на ТВ */
+.categories-grid-6 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, auto);
+  gap: 14px;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.categories-grid-6 .glass-card {
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
 
 /* Адаптивный перенос названий категорий */
 .category-card-title,
@@ -756,7 +835,7 @@ input[type="text"]:focus {
   overflow-wrap: break-word !important;
   hyphens: auto !important;
   -webkit-hyphens: auto !important;
-  font-size: clamp(1.1rem, 2.2vw, 1.6rem) !important;
+  font-size: clamp(1rem, 1.8vw, 1.45rem) !important;
   line-height: 1.2 !important;
   max-width: 100%;
   text-align: center;
@@ -920,6 +999,9 @@ input[type="text"]:focus {
     width: 48px;
     height: 42px;
   }
+  .categories-grid-6 {
+    gap: 10px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -996,5 +1078,11 @@ input[type="text"]:focus {
     height: 32px;
     min-width: 32px;
     font-size: 1.05rem;
+  }
+
+  .categories-grid-6 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, auto);
+    gap: 8px;
   }
 }

@@ -6,7 +6,7 @@
  * 3. Структура вопроса:
  *    - id: уникальный идентификатор.
  *    - text: текст вопроса.
- *    - imageUrl: (опционально) ссылка на картинку.
+ *    - imageUrl: (опционально) ссылка на картинку вида "https://tse2.mm.bing.net/th?q=...&w=640&h=420&c=7".
  *    - options: массив из 4 вариантов ответа.
  *    - correctIndex: число от 0 до 3.
  */
@@ -23,7 +23,12 @@ window.QuestionBank = {
     { id: "celebs", name: "Знаменитости", icon: "⭐" },
     { id: "cartoons", name: "Мультфильмы", icon: "🎈" },
     { id: "art", name: "Искусство", icon: "🎨" },
-    { id: "history", name: "История", icon: "📜" }
+    { id: "history", name: "История", icon: "📜" },
+    { id: "memes", name: "Мемология", icon: "🗿" },
+    { id: "funny_animals", name: "Шутки фауны", icon: "😸" },
+    { id: "crazy_food", name: "Кулинарные курьёзы", icon: "🍕" },
+    { id: "geek_humor", name: "Гик-юмор", icon: "👾" },
+    { id: "epic_fails", name: "Эпичные моменты", icon: "🤦" }
   ],
 
   items: {
@@ -136,10 +141,60 @@ window.QuestionBank = {
       { id: "hist6", text: "Кто был лидером СССР во время Великой Отечественной войны?", options: ["Ленин", "Сталин", "Хрущев", "Брежнев"], correctIndex: 1 },
       { id: "hist7", text: "Какое событие ознаменовало начало Французской революции?", options: ["Взятие Бастилии", "Казнь короля", "Поход на Версаль", "Принятие Декларации"], correctIndex: 0 },
       { id: "hist8", text: "Как звали последнего русского царя?", options: ["Александр III", "Николай II", "Петр I", "Павел I"], correctIndex: 1 }
+    ],
+    memes: [
+      { id: "meme1", text: "Как зовут эту легендарную собаку породы сиба-ину из мема?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%94%D0%BE%D0%B3%D0%B5%20%D1%81%D0%BE%D0%B1%D0%B0%D0%BA%D0%B0%20Doge%20meme&w=640&h=420&c=7", options: ["Хатико", "Доге", "Чемс", "Балто"], correctIndex: 1 },
+      { id: "meme2", text: "Какое животное кричит 'Наташа, мы всё уронили'?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9A%D0%BE%D1%82%D1%8B%20%D0%9D%D0%B0%D1%82%D0%B0%D1%88%D0%B0%20%D0%BC%D1%8B%20%D1%82%D0%B0%D0%BC%20%D0%B2%D1%81%D0%B5%20%D1%83%D1%80%D0%BE%D0%BD%D0%B8%D0%BB%D0%B8&w=640&h=420&c=7", options: ["Еноты", "Собаки", "Коты", "Попугаи"], correctIndex: 2 },
+      { id: "meme3", text: "Кто этот улыбающийся седовласый герой грустных мемов?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%93%D0%B0%D1%80%D0%BE%D0%BB%D1%8C%D0%B4%20%D0%BF%D1%80%D1%8F%D1%87%D1%83%D1%89%D0%B8%D0%B9%20%D0%B1%D0%BE%D0%BB%D1%8C%20Hide%20the%20Pain%20Harold&w=640&h=420&c=7", options: ["Гарольд скрывающий боль", "Дед Максим", "Доктор Ливси", "Тони Старк"], correctIndex: 0 },
+      { id: "meme4", text: "Что по мему нельзя просто так взять и сделать?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9D%D0%B5%D0%BB%D1%8C%D0%B7%D1%8F%20%D0%BF%D1%80%D0%BE%D1%81%D1%82%D0%BE%D1%82%D0%B0%D0%BA%20%D0%B2%D0%B7%D1%8F%D1%82%D1%8C%20%D0%B8%20%D0%B2%D0%BE%D0%B9%D1%82%D0%B8%20%D0%B2%20%D0%9C%D0%BE%D1%80%D0%B4%D0%BE%D1%80&w=640&h=420&c=7", options: ["Войти в Мордор", "Сдать сессию", "Выиграть в лотерею", "Похудеть к лету"], correctIndex: 0 },
+      { id: "meme5", text: "Как прозвали эту угрюмую кошку?", imageUrl: "https://tse2.mm.bing.net/th?q=Grumpy%20Cat%20%D1%81%D0%B5%D1%80%D0%B4%D0%B8%D1%82%D1%8B%D0%B9%20%D0%BA%D0%BE%D1%82&w=640&h=420&c=7", options: ["Хэппи Кэт", "Грампи Кэт", "Мурка", "Кот Борис"], correctIndex: 1 },
+      { id: "meme6", text: "Что держит в руке Леонардо Ди Каприо в знаменитом тосте?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9B%D0%B5%D0%BE%D0%BD%D0%B0%D1%80%D0%B4%D0%BE%20%D0%94%D0%B8%20%D0%9A%D0%B0%D0%BF%D1%80%D0%B8%D0%BE%20%D0%B1%D0%BE%D0%BA%D0%B0%D0%BB%20%D0%92%D0%B5%D0%BB%D0%B8%D0%BA%D0%B8%D0%B9%20%D0%93%D1%8D%D1%82%D1%81%D0%B1%D0%B8&w=640&h=420&c=7", options: ["Кружку кофе", "Бокал шампанского", "Стакан сока", "Оскар"], correctIndex: 1 },
+      { id: "meme7", text: "Что продавали эти знаменитые коты из мема?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%92%D1%8B%20%D1%80%D1%8B%D0%B1%D0%BE%D0%B2%20%D0%BF%D1%80%D0%BE%D0%B4%D0%B0%D0%B5%D1%82%D0%B5%20%D0%BA%D1%80%D0%BE%D1%81%D0%B8%D0%B2%D0%BE%D0%B5&w=640&h=420&c=7", options: ["Колбасу", "Рыбов", "Сыр", "Молоко"], correctIndex: 1 },
+      { id: "meme8", text: "Кто этот невозмутимый пёс в горящей комнате?", imageUrl: "https://tse2.mm.bing.net/th?q=This%20is%20fine%20dog%20%D0%BC%D0%B5%D0%BC%20%D0%B2%20%D0%BE%D0%B3%D0%BD%D0%B5&w=640&h=420&c=7", options: ["This is fine", "Doggo", "Снупи", "Плуто"], correctIndex: 0 }
+    ],
+    funny_animals: [
+      { id: "anim1", text: "Что это за птица, которая всегда выглядит удивленной?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A1%D0%BE%D0%B2%D0%B0%20%D1%81%20%D0%B1%D0%BE%D0%BB%D1%8C%D1%88%D0%B8%D0%BC%D0%B8%20%D0%B3%D0%BB%D0%B0%D0%B7%D0%B0%D0%BC%D0%B8%20%D1%81%D0%BC%D0%B5%D1%88%D0%BD%D0%B0%D1%8F&w=640&h=420&c=7", options: ["Сова", "Голубь", "Страус", "Пингвин"], correctIndex: 0 },
+      { id: "anim2", text: "Какой зверь обожает расслабляться в горячих источниках?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9A%D0%B0%D0%BF%D0%B8%D0%B1%D0%B0%D1%80%D0%B0%20%D0%B2%20%D0%B3%D0%BE%D1%80%D1%8F%D1%87%D0%B5%D0%BC%20%D0%B8%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%D0%B5%20%D1%81%20%D0%BC%D0%B0%D0%BD%D0%B4%D0%B0%D1%80%D0%B8%D0%BD%D0%BE%D0%BC&w=640&h=420&c=7", options: ["Капибара", "Бобр", "Выдра", "Хомяк"], correctIndex: 0 },
+      { id: "anim3", text: "Кто этот мастер медлительности на дереве?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9B%D0%B5%D0%BD%D0%B8%D0%B2%D0%B5%D1%86%20%D1%81%D0%BC%D0%B5%D1%88%D0%BD%D0%BE%D0%B9%20%D0%BD%D0%B0%20%D0%B4%D0%B5%D1%80%D0%B5%D0%B2%D0%B5&w=640&h=420&c=7", options: ["Панда", "Ленивец", "Коала", "Опоссум"], correctIndex: 1 },
+      { id: "anim4", text: "Какая птица не умеет летать, но отлично плавает во фраке?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9F%D0%B8%D0%BD%D0%B3%D0%B2%D0%B8%D0%BD%20%D0%BD%D0%B0%20%D0%BB%D1%8C%D0%B4%D0%B8%D0%BD%D0%B5%20%D1%81%D0%BC%D0%B5%D1%88%D0%BD%D0%BE%D0%B9&w=640&h=420&c=7", options: ["Чайка", "Пеликан", "Пингвин", "Дрофа"], correctIndex: 2 },
+      { id: "anim5", text: "Кто этот зверёк, который вечно прячет орехи и всё забывает?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%91%D0%B5%D0%BB%D0%BA%D0%B0%20%D1%81%20%D0%BE%D1%80%D0%B5%D1%85%D0%BE%D0%BC%20%D1%81%D0%BC%D0%B5%D1%88%D0%BD%D0%B0%D1%8F&w=640&h=420&c=7", options: ["Бурундук", "Белка", "Суслик", "Крот"], correctIndex: 1 },
+      { id: "anim6", text: "Какое сумчатое животное из Австралии всегда выглядит счастливым?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9A%D0%B2%D0%BE%D0%BA%D0%BA%D0%B0%20%D1%83%D0%BB%D1%8B%D0%B1%D0%B0%D0%B5%D1%82%D1%81%D1%8F%20%D1%81%D0%B5%D0%BB%D1%84%D0%B8&w=640&h=420&c=7", options: ["Квокка", "Кенгуру", "Вомбат", "Тасманский дьявол"], correctIndex: 0 },
+      { id: "anim7", text: "Что за птица смотрит с подозрением и может больно клюнуть?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%93%D1%83%D1%81%D1%8C%20%D0%B0%D0%B3%D1%80%D0%B5%D1%81%D1%81%D0%B8%D0%B2%D0%BD%D1%8B%D0%B9%20%D0%BC%D0%B5%D0%BC&w=640&h=420&c=7", options: ["Гусь", "Утка", "Индюк", "Лебедь"], correctIndex: 0 },
+      { id: "anim8", text: "Кто это существо с лапами и клювом, которое ставит биологов в тупик?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A3%D1%82%D0%BA%D0%BE%D0%BD%D0%BE%D1%81%20%D0%B2%20%D0%B2%D0%BE%D0%B4%D0%B5%20%D1%84%D0%BE%D1%82%D0%BE&w=640&h=420&c=7", options: ["Ехидна", "Утконос", "Бобер", "Ондатра"], correctIndex: 1 }
+    ],
+    crazy_food: [
+      { id: "food1", text: "Какой ингредиент в пицце вызывает больше всего споров в мире?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9F%D0%B8%D1%86%D1%86%D0%B0%20%D1%81%20%D0%B0%D0%BD%D0%B0%D0%BD%D0%B0%D1%81%D0%B0%D0%BC%D0%B8%20%D0%93%D0%B0%D0%B2%D0%B0%D0%B9%D1%81%D0%BA%D0%B0%D1%8F&w=640&h=420&c=7", options: ["Грибы", "Ананас", "Оливки", "Лук"], correctIndex: 1 },
+      { id: "food2", text: "Какой тропический фрукт пахнет как мусор, но считается деликатесом?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A4%D1%80%D1%83%D0%BA%D1%82%20%D0%94%D1%83%D1%80%D0%B8%D0%B0%D0%BD%20%D1%84%D0%BE%D1%82%D0%BE&w=640&h=420&c=7", options: ["Манго", "Дуриан", "Папайя", "Джекфрут"], correctIndex: 1 },
+      { id: "food3", text: "Как называется суп из свеклы, за который спорят в интернете?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%91%D0%BE%D1%80%D1%89%20%D1%81%D0%BE%20%D1%81%D0%BC%D0%B5%D1%82%D0%B0%D0%BD%D0%BE%D0%B9%20%D0%B8%20%D0%BF%D0%B0%D0%BC%D0%BF%D1%83%D1%88%D0%BA%D0%B0%D0%BC%D0%B8&w=640&h=420&c=7", options: ["Борщ", "Гаспачо", "Солянка", "Том Ям"], correctIndex: 0 },
+      { id: "food4", text: "Какой фастфуд состоит из двух булочек и сочной котлеты?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%91%D1%83%D1%80%D0%B3%D0%B5%D1%80%20%D1%87%D0%B8%D0%B7%D0%B1%D1%83%D1%80%D0%B3%D0%B5%D1%80%20%D0%B0%D0%BF%D0%BF%D0%B5%D1%82%D0%B8%D1%82%D0%BD%D1%8B%D0%B9&w=640&h=420&c=7", options: ["Шаурма", "Бургер", "Хот-дог", "Тако"], correctIndex: 1 },
+      { id: "food5", text: "Что это за традиционное итальянское блюдо в форме длинных нитей?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A1%D0%BF%D0%B0%D0%B3%D0%B5%D1%82%D1%82%D0%B8%20%D0%BF%D0%B0%D1%81%D1%82%D0%B0%20%D1%81%20%D1%82%D0%BE%D0%BC%D0%B0%D1%82%D0%BD%D1%8B%D0%BC%20%D1%81%D0%BE%D1%83%D1%81%D0%BE%D0%BC&w=640&h=420&c=7", options: ["Спагетти", "Ризотто", "Лазанья", "Равиоли"], correctIndex: 0 },
+      { id: "food6", text: "Какая сладость круглая, с дыркой посередине и в яркой глазури?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9F%D0%BE%D0%BD%D1%87%D0%B8%D0%BA%20%D0%B4%D0%BE%D0%BD%D0%B0%D1%82%20%D1%81%20%D1%80%D0%BE%D0%B7%D0%BE%D0%B2%D0%BE%D0%B9%20%D0%B3%D0%BB%D0%B0%D0%B7%D1%83%D1%80%D1%8C%D1%8E&w=640&h=420&c=7", options: ["Круассан", "Пончик", "Эклер", "Маффин"], correctIndex: 1 },
+      { id: "food7", text: "Какой соус на основе авокадо обожают в Мексике?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%93%D1%83%D0%B0%D0%BA%D0%B0%D0%BC%D0%BE%D0%BB%D0%B5%20%D1%81%20%D0%BD%D0%B0%D1%87%D0%BE%D1%81%20%D1%84%D0%BE%D1%82%D0%BE&w=640&h=420&c=7", options: ["Сальса", "Гуакамоле", "Песто", "Тартар"], correctIndex: 1 },
+      { id: "food8", text: "Что это за десерт из замороженного молока и сливок?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9C%D0%BE%D1%80%D0%BE%D0%B6%D0%B5%D0%BD%D0%BE%D0%B5%20%D0%B2%20%D1%80%D0%BE%D0%B6%D0%BA%D0%B5%20%D1%8F%D1%80%D0%BA%D0%BE%D0%B5&w=640&h=420&c=7", options: ["Мороженое", "Желе", "Пудинг", "Суфле"], correctIndex: 0 }
+    ],
+    geek_humor: [
+      { id: "geek1", text: "Как программисты называют не баг, а фичу?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9E%D1%88%D0%B8%D0%B1%D0%BA%D0%B0%20%D0%B2%20%D0%BA%D0%BE%D0%B4%D0%B5%20%D0%B1%D0%B0%D0%B3%20meme&w=640&h=420&c=7", options: ["Особенность архитектуры", "Случайность", "Секретный уровень", "Пасхалка"], correctIndex: 0 },
+      { id: "geek2", text: "Какой синий экран пугает всех пользователей Windows?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A1%D0%B8%D0%BD%D0%B8%D0%B9%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%20%D1%81%D0%BC%D0%B5%D1%80%D1%82%D0%B8%20BSOD%20Windows&w=640&h=420&c=7", options: ["Синий экран смерти", "Экран перезагрузки", "Окно биоса", "Панель задач"], correctIndex: 0 },
+      { id: "geek3", text: "Что по легенде чинит любую технику у сисадмина?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9F%D0%B5%D1%80%D0%B5%D0%B7%D0%B0%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B0%20%D0%BA%D0%BE%D0%BC%D0%BF%D1%8C%D1%8E%D1%82%D0%B5%D1%80%D0%B0%20IT%20Crowd&w=640&h=420&c=7", options: ["Перезагрузка", "Удар кулаком", "Установка антивируса", "Замена монитора"], correctIndex: 0 },
+      { id: "geek4", text: "Какой робот из 'Звездных войн' общается только писком и свистом?", imageUrl: "https://tse2.mm.bing.net/th?q=R2-D2%20Star%20Wars%20%D0%B4%D1%80%D0%BE%D0%B8%D0%B4&w=640&h=420&c=7", options: ["C-3PO", "R2-D2", "BB-8", "K-2SO"], correctIndex: 1 },
+      { id: "geek5", text: "Какая клавиша спасает от отправки нежелательного окна?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9A%D0%BB%D0%B0%D0%B2%D0%B8%D1%88%D0%B0%20Escape%20Esc%20%D0%BA%D0%BB%D0%B0%D0%B2%D0%B8%D0%B0%D1%82%D1%83%D1%80%D0%B0&w=640&h=420&c=7", options: ["Enter", "Esc", "Shift", "Caps Lock"], correctIndex: 1 },
+      { id: "geek6", text: "Кто создал операционную систему Linux с пингвином на логотипе?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9B%D0%B8%D0%BD%D1%83%D1%81%20%D0%A2%D0%BE%D1%80%D0%B2%D0%B0%D0%BB%D1%8C%D0%B4%D1%81%20Linus%20Torvalds&w=640&h=420&c=7", options: ["Линус Торвальдс", "Билл Гейтс", "Стив Возняк", "Тим Бернерс-Ли"], correctIndex: 0 },
+      { id: "geek7", text: "В какой игре главный инструмент для всего — алмазная кирка?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9C%D0%B0%D0%B9%D0%BD%D0%BA%D1%80%D0%B0%D1%84%D1%82%20Minecraft%20%D0%B0%D0%BB%D0%BC%D0%B0%D0%B7%D0%BD%D0%B0%D1%8F%20%D0%BA%D0%B8%D1%80%D0%BA%D0%B0&w=640&h=420&c=7", options: ["Terraria", "Minecraft", "Roblox", "Rust"], correctIndex: 1 },
+      { id: "geek8", text: "Как в двоичной системе счисления выглядит цифра 2?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%94%D0%B2%D0%BE%D0%B8%D1%87%D0%BD%D1%8B%D0%B9%20%D0%BA%D0%BE%D0%B4%2010%20%D0%BC%D0%B0%D1%82%D1%80%D0%B8%D1%86%D0%B0&w=640&h=420&c=7", options: ["01", "10", "11", "00"], correctIndex: 1 }
+    ],
+    epic_fails: [
+      { id: "fail1", text: "Что обычно роняют на пол экраном вниз бутерброд и смартфон?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A0%D0%B0%D0%B7%D0%B1%D0%B8%D1%82%D1%8B%D0%B9%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%20%D1%81%D0%BC%D0%B0%D1%80%D1%82%D1%84%D0%BE%D0%BD%D0%B0%20%D1%82%D1%80%D0%B5%D1%89%D0%B8%D0%BD%D1%8B&w=640&h=420&c=7", options: ["Маслом вниз", "Законом подлости", "Экраном вверх", "В воду"], correctIndex: 0 },
+      { id: "fail2", text: "Что приключилось с Пизанской башней, сделав её всемирно известной?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9F%D0%B8%D0%B7%D0%B0%D0%BD%D1%81%D0%BA%D0%B0%D1%8F%20%D0%B1%D0%B0%D1%88%D0%BD%D1%8F%20%D0%BD%D0%B0%D0%BA%D0%BB%D0%BE%D0%BD&w=640&h=420&c=7", options: ["Она наклонилась", "Она утонула", "Ее покрасили не так", "Она треснула"], correctIndex: 0 },
+      { id: "fail3", text: "Какой корабль считался непотопляемым, но столкнулся с айсбергом?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A2%D0%B8%D1%82%D0%B0%D0%BD%D0%B8%D0%BA%20%D0%BA%D0%BE%D1%80%D0%B0%D0%B1%D0%BB%D1%8C%20%D0%B0%D0%B9%D1%81%D0%B1%D0%B5%D1%80%D0%B3&w=640&h=420&c=7", options: ["Британик", "Титаник", "Олимпик", "Аврора"], correctIndex: 1 },
+      { id: "fail4", text: "Что забывают выключить перед выходом из дома тревожные люди?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A3%D1%82%D1%8E%D0%B3%20%D0%B2%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%BD%D0%BD%D1%8B%D0%B9%20%D0%B4%D0%BE%D0%BC%D0%B0%20%D0%BC%D0%B5%D0%BC&w=640&h=420&c=7", options: ["Утюг", "Будильник", "Фонарик", "Радио"], correctIndex: 0 },
+      { id: "fail5", text: "Какой жест выражает высшую степень разочарования и стыда?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A4%D0%B5%D0%B9%D1%81%D0%BF%D0%B0%D0%BB%D0%BC%20Facepalm%20%D1%80%D1%83%D0%BA%D0%B0%D0%BB%D0%B8%D1%86%D0%BE&w=640&h=420&c=7", options: ["Фейспалм (рукалицо)", "Палец вверх", "Дай пять", "Хлопок"], correctIndex: 0 },
+      { id: "fail6", text: "Что происходит, если случайно отправить личное сообщение в рабочий чат?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9F%D0%B0%D0%BD%D0%B8%D0%BA%D0%B0%20%D1%83%20%D0%BA%D0%BE%D0%BC%D0%BF%D1%8C%D1%8E%D1%82%D0%B5%D1%80%D0%B0%20%D1%81%D0%BC%D0%B5%D1%88%D0%BD%D0%BE&w=640&h=420&c=7", options: ["Испанский стыд", "Повышение", "Премия", "Аплодисменты"], correctIndex: 0 },
+      { id: "fail7", text: "Что случается, если наступить на деталь конструктора LEGO босиком?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%94%D0%B5%D1%82%D0%B0%D0%BB%D1%8C%20LEGO%20%D0%BD%D0%B0%20%D0%BF%D0%BE%D0%BB%D1%83%20%D0%B1%D0%BE%D0%BB%D1%8C&w=640&h=420&c=7", options: ["Невыносимая боль", "Щекотка", "Приятный массаж", "Смех"], correctIndex: 0 },
+      { id: "fail8", text: "Что обычно случается с тортом, который несут на день рождения в кино?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A2%D0%BE%D1%80%D1%82%20%D0%B2%20%D0%BB%D0%B8%D1%86%D0%BE%20%D0%BF%D0%B0%D0%B4%D0%B5%D0%BD%D0%B8%D0%B5%20%D1%81%D0%BC%D0%B5%D1%88%D0%BD%D0%BE&w=640&h=420&c=7", options: ["Летит в лицо или на пол", "Его съедает кот", "Он взлетает", "Ничего"], correctIndex: 0 }
     ]
   },
 
-  getCategories: function(count = 3) {
+  getCategories: function(count = 6) {
     const shuffled = [...this.categories].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, count);
   },
