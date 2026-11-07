@@ -128,7 +128,7 @@ function Pawn(props) {
         headContent = h('span', { className: 'text-3xl select-none' }, selfie || '👤');
     }
 
-    var wrapperClasses = 'pawn-wrapper ' + (isWalking ? 'pawn-walking ' : '') + 'absolute pointer-events-none transition-all duration-300 flex flex-col items-center justify-center';
+    var wrapperClasses = 'pawn-wrapper ' + (isWalking ? 'pawn-walking ' : '') + 'relative w-full h-full pointer-events-none transition-all duration-300 flex flex-col items-center justify-center';
 
     return h('div', {
         className: wrapperClasses,
@@ -1334,7 +1334,7 @@ function MobileApp(props) {
             return;
         }
 
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             audioChunksRef.current = [];
 
             var mimeType = '';

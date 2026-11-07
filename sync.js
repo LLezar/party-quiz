@@ -79,13 +79,13 @@ window.GameSync = (function() {
             if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
 
             if (RESET_KEYS.indexOf(key) !== -1) {
-                if (source[key] === null) {
+                if (source[key] === null || (isObject(source[key]) && Object.keys(source[key]).length === 0)) {
+                    // Явный сброс ответов/голосов/ходов при передаче null или пустого объекта {}
                     target[key] = {};
                 } else if (isObject(source[key])) {
                     if (!target[key] || typeof target[key] !== 'object') {
                         target[key] = {};
                     }
-                    // Мягкое объединение ответов/голосов: не затираем ключи других игроков
                     for (var subKey in source[key]) {
                         if (Object.prototype.hasOwnProperty.call(source[key], subKey)) {
                             target[key][subKey] = source[key][subKey];
@@ -157,13 +157,13 @@ window.GameSync = (function() {
     }
 
     function fetchStateFromFirebase(roomCode) {
-        if (!databaseUrl) return;
+        if (!databaseUrl || activePushCount > 0) return;
         fetch(getFirebaseUrl(roomCode))
             .then(function(res) {
                 return res.json();
             })
             .then(function(data) {
-                if (data && typeof data === 'object') {
+                if (data && typeof data === 'object' && activePushCount === 0) {
                     syncFromRemote(data);
                     triggerCallback();
                 }
