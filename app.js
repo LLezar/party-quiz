@@ -141,22 +141,27 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
 
         if (isOpen && !photo) {
             setIsVideoReady(false);
-            navigator.mediaDevices?.getUserMedia({ 
-                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } } 
-            }).then(s => {
-                if (isCancelled) {
-                    s.getTracks().forEach(track => track.stop());
-                    return;
-                }
-                stream = s;
-                if (videoRef.current) {
-                    videoRef.current.srcObject = s;
-                }
-            }).catch(err => {
-                console.error("Camera access error:", err);
-                alert("Ошибка доступа к камере. Пожалуйста, выберите эмодзи.");
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } } 
+                }).then(s => {
+                    if (isCancelled) {
+                        s.getTracks().forEach(track => track.stop());
+                        return;
+                    }
+                    stream = s;
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = s;
+                    }
+                }).catch(err => {
+                    console.error("Camera access error:", err);
+                    alert("Ошибка доступа к камере. Пожалуйста, выберите эмодзи.");
+                    if (onCloseRef.current) onCloseRef.current();
+                });
+            } else {
+                alert("Камера не поддерживается вашим браузером. Выберите эмодзи.");
                 if (onCloseRef.current) onCloseRef.current();
-            });
+            }
         }
 
         return () => {
@@ -167,15 +172,19 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
 
     if (!isOpen) return null;
 
-    const handleTake = async () => {
+    const handleTake = () => {
         const videoEl = videoRef.current;
         if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) {
             return;
         }
         try {
             if (window.captureSelfie) {
-                const base64 = await window.captureSelfie(videoEl);
-                setPhoto(base64);
+                window.captureSelfie(videoEl).then(base64 => {
+                    setPhoto(base64);
+                }).catch(e => {
+                    console.error(e);
+                    alert("Не удалось сделать снимок");
+                });
             } else {
                 const canvas = document.createElement('canvas');
                 canvas.width = 256;
@@ -523,62 +532,82 @@ const TVApp = ({ roomId, dbUrl }) => {
         });
     }, [gameState]);
 
-    const executeRoundMovement = async () => {
+    // Анимация пошагового движения игроков через промисы без генераторов (полная совместимость с ES5)
+    const executeRoundMovement = () => {
         setIsAnimatingRoundMoves(true);
-        await window.GameSync.updateState({ phase: 'board_move', timerEndTime: 0 });
 
-        const playersCopy = JSON.parse(JSON.stringify(gameState?.players || {}));
-        const initialPositions = {};
-        Object.keys(playersCopy).forEach(pid => {
-            initialPositions[pid] = playersCopy[pid].position || 0;
-        });
+        window.GameSync.updateState({ phase: 'board_move', timerEndTime: 0 }).then(() => {
+            const playersCopy = JSON.parse(JSON.stringify(gameState?.players || {}));
+            const initialPositions = {};
+            const playerIds = Object.keys(playersCopy);
+            playerIds.forEach(pid => {
+                initialPositions[pid] = playersCopy[pid].position || 0;
+            });
 
-        for (const pid of Object.keys(playersCopy)) {
-            const steps = roundCorrectRef.current[pid] || 0;
-            let currentPos = playersCopy[pid].position || 0;
+            const animatePlayerSteps = (playerIndex) => {
+                if (playerIndex >= playerIds.length) {
+                    const sorted = getSortedStandings(playersCopy);
+                    const roundMoves = {};
+                    sorted.forEach((p, index) => {
+                        roundMoves[p.id] = {
+                            rank: index + 1,
+                            stepsGained: roundCorrectRef.current[p.id] || 0,
+                            previousPos: initialPositions[p.id] || 0,
+                            currentPos: p.position || 0
+                        };
+                    });
 
-            // Воспроизведение записанного победного клича игрока во время его хода
-            if (steps > 0 && playersCopy[pid].cheerAudio) {
-                try {
-                    const cheer = new Audio(playersCopy[pid].cheerAudio);
-                    cheer.play().catch(e => console.log("Cheer audio playback prevented or failed:", e));
-                } catch (err) {
-                    console.log("Cheer audio play error:", err);
+                    setIsAnimatingRoundMoves(false);
+
+                    return window.GameSync.updateState({
+                        phase: 'round_summary',
+                        timerEndTime: Date.now() + 6000,
+                        roundMoves,
+                        players: playersCopy
+                    });
                 }
-            }
 
-            for (let s = 0; s < steps; s++) {
-                if (currentPos >= TOTAL_CELLS - 1) break;
-                setWalkingPlayerId(pid);
-                currentPos += 1;
-                setVisualPositions(prev => ({ ...prev, [pid]: currentPos }));
-                await new Promise(res => setTimeout(res, 500));
-                setWalkingPlayerId(null);
-                await new Promise(res => setTimeout(res, 150));
-            }
+                const pid = playerIds[playerIndex];
+                const steps = roundCorrectRef.current[pid] || 0;
+                let currentPos = playersCopy[pid].position || 0;
 
-            playersCopy[pid].position = currentPos;
-            playersCopy[pid].score = (playersCopy[pid].score || 0) + steps;
-        }
+                if (steps > 0 && playersCopy[pid].cheerAudio) {
+                    try {
+                        const cheer = new Audio(playersCopy[pid].cheerAudio);
+                        cheer.play().catch(e => console.log("Cheer audio playback prevented or failed:", e));
+                    } catch (err) {
+                        console.log("Cheer audio play error:", err);
+                    }
+                }
 
-        const sorted = getSortedStandings(playersCopy);
-        const roundMoves = {};
-        sorted.forEach((p, index) => {
-            roundMoves[p.id] = {
-                rank: index + 1,
-                stepsGained: roundCorrectRef.current[p.id] || 0,
-                previousPos: initialPositions[p.id] || 0,
-                currentPos: p.position || 0
+                const stepOneByOne = (s) => {
+                    if (s >= steps || currentPos >= TOTAL_CELLS - 1) {
+                        playersCopy[pid].position = currentPos;
+                        playersCopy[pid].score = (playersCopy[pid].score || 0) + steps;
+                        return animatePlayerSteps(playerIndex + 1);
+                    }
+
+                    setWalkingPlayerId(pid);
+                    currentPos += 1;
+                    setVisualPositions(prev => ({ ...prev, [pid]: currentPos }));
+
+                    return new Promise(res => setTimeout(res, 500))
+                        .then(() => {
+                            setWalkingPlayerId(null);
+                            return new Promise(res => setTimeout(res, 150));
+                        })
+                        .then(() => {
+                            return stepOneByOne(s + 1);
+                        });
+                };
+
+                return stepOneByOne(0);
             };
-        });
 
-        setIsAnimatingRoundMoves(false);
-
-        await window.GameSync.updateState({
-            phase: 'round_summary',
-            timerEndTime: Date.now() + 6000,
-            roundMoves,
-            players: playersCopy
+            return animatePlayerSteps(0);
+        }).catch(err => {
+            console.error("Movement animation error:", err);
+            setIsAnimatingRoundMoves(false);
         });
     };
 
@@ -973,17 +1002,23 @@ const MobileApp = ({ roomId, dbUrl }) => {
         }
     }, [usedColors, color]);
 
-    // Запись 3-секундного победного клича
-    const startRecordingCheer = async () => {
+    // Запись 3-секундного победного клича на промисах без async/await
+    const startRecordingCheer = () => {
         if (isRecordingCheer) return;
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert("Ваш браузер не поддерживает запись аудио.");
+            return;
+        }
+
+        navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
             audioChunksRef.current = [];
 
             let mimeType = '';
-            if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
-            else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
-            else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+            if (window.MediaRecorder) {
+                if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+                else if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+                else if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+            }
 
             const options = mimeType ? { mimeType } : {};
             const mediaRecorder = new MediaRecorder(stream, options);
@@ -1023,11 +1058,11 @@ const MobileApp = ({ roomId, dbUrl }) => {
                     }
                 }
             }, 1000);
-        } catch (err) {
+        }).catch((err) => {
             console.error("Microphone error:", err);
             alert("Не удалось получить доступ к микрофону. Клич можно пропустить.");
             setIsRecordingCheer(false);
-        }
+        });
     };
 
     const playCheerPreview = () => {
