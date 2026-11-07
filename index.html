@@ -9,26 +9,43 @@
     <!-- Подключение TailwindCSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Внешняя таблица стилей -->
-    <link rel="stylesheet" href="styles.css">
+    <!-- Внешняя таблица стилей с cache-busting -->
+    <link rel="stylesheet" href="styles.css?v=2">
     
     <!-- Подключение библиотеки для QR-кода -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
-    <!-- Подключение React 18 -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Подключение React 18 через стабильный CDN jsDelivr -->
+    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     
-    <!-- Подключение Babel для JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Подключение Babel для JSX через стабильный CDN jsDelivr -->
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-gray-900 text-white overflow-hidden m-0 p-0">
     <!-- Корневой контейнер с контрактным классом фона -->
     <div id="root" class="app-bg h-screen w-screen font-sans overflow-hidden"></div>
 
-    <!-- Подключение скриптов в строгом порядке -->
-    <script src="questions.js"></script>
-    <script src="sync.js"></script>
-    <script type="text/babel" src="app.js"></script>
+    <!-- Подключение скриптов в строгом порядке с cache-busting -->
+    <script src="questions.js?v=2"></script>
+    <script src="sync.js?v=2"></script>
+    <script type="text/babel" src="app.js?v=2"></script>
+
+    <!-- Глобальный перехватчик ошибок для Smart TV и Safari -->
+    <script>
+      window.addEventListener('error', function(e) {
+        var root = document.getElementById('root');
+        if (root && (!root.children || root.children.length === 0)) {
+          root.innerHTML = '<div style="padding:24px;color:#ff4757;font-family:sans-serif;font-weight:bold;text-align:center;">' +
+            '<h2>Ошибка загрузки игры</h2>' +
+            '<p style="color:#ffffff;font-size:14px;margin-top:8px;">' + (e.message || 'Не удалось инициализировать приложение') + '</p>' +
+            '<button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;font-weight:bold;border-radius:12px;background:#fde047;border:2px solid #000;color:#000;cursor:pointer;">Повторить попытку</button>' +
+          '</div>';
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('Unhandled Promise Rejection:', e.reason);
+      });
+    </script>
 </body>
 </html>
