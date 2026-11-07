@@ -6,39 +6,78 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Пати Квиз</title>
     
-    <!-- Подключение TailwindCSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Подключение статического TailwindCSS v2.2.19 (без JS-рантайма, 100% совместимо со Smart TV webOS и Safari) -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     
-    <!-- Внешняя таблица стилей с cache-busting -->
+    <!-- Внешняя таблица стилей с дополнениями классов и мультяшными стилями -->
     <link rel="stylesheet" href="styles.css?v=2">
     
     <!-- Подключение библиотеки для QR-кода -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
     
     <!-- Подключение React 18 через стабильный CDN jsDelivr -->
-    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
     
-    <!-- Подключение Babel для JSX через стабильный CDN jsDelivr -->
-    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+    <!-- Подключение Babel для компиляции в ES5 через стабильный CDN jsDelivr -->
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-900 text-white overflow-hidden m-0 p-0">
     <!-- Корневой контейнер с контрактным классом фона -->
     <div id="root" class="app-bg h-screen w-screen font-sans overflow-hidden"></div>
 
-    <!-- Подключение скриптов в строгом порядке с cache-busting -->
+    <!-- Подключение скриптов в строгом порядке -->
     <script src="questions.js?v=2"></script>
     <script src="sync.js?v=2"></script>
-    <script type="text/babel" src="app.js?v=2"></script>
+
+    <!-- Загрузчик и транспилятор app.js в ES5 с обработкой ошибок -->
+    <script>
+      (function() {
+        fetch('app.js?v=' + Date.now())
+          .then(function(response) {
+            if (!response.ok) {
+              throw new Error('Не удалось загрузить app.js: HTTP ' + response.status);
+            }
+            return response.text();
+          })
+          .then(function(code) {
+            var transformed = Babel.transform(code, {
+              presets: ['env', 'react']
+            }).code;
+            var script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.text = transformed;
+            document.body.appendChild(script);
+          })
+          .catch(function(err) {
+            console.error('Ошибка инициализации app.js:', err);
+            var root = document.getElementById('root');
+            if (root) {
+              root.innerHTML = '<div style="padding:24px;color:#ff4757;font-family:sans-serif;font-weight:bold;text-align:center;">' +
+                '<h2>Ошибка компиляции игры</h2>' +
+                '<p style="color:#ffffff;font-size:14px;margin-top:8px;white-space:pre-wrap;text-align:left;background:rgba(0,0,0,0.5);padding:12px;border-radius:8px;">' +
+                (err.stack || err.message || 'Ошибка компиляции app.js') + '</p>' +
+                '<button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;font-weight:bold;border-radius:12px;background:#fde047;border:2px solid #000;color:#000;cursor:pointer;">Повторить попытку</button>' +
+              '</div>';
+            }
+          });
+      })();
+    </script>
 
     <!-- Глобальный перехватчик ошибок для Smart TV и Safari -->
     <script>
       window.addEventListener('error', function(e) {
+        var msg = e.message || (e.error && e.error.message) || '';
+        // Игнорируем обезличенную внешнюю ошибку Script error. и пустые события
+        if (!msg || msg === 'Script error.' || msg === 'Script error') {
+          return;
+        }
         var root = document.getElementById('root');
+        // Ни в коем случае не затираем уже смонтированное и работающее приложение React
         if (root && (!root.children || root.children.length === 0)) {
           root.innerHTML = '<div style="padding:24px;color:#ff4757;font-family:sans-serif;font-weight:bold;text-align:center;">' +
             '<h2>Ошибка загрузки игры</h2>' +
-            '<p style="color:#ffffff;font-size:14px;margin-top:8px;">' + (e.message || 'Не удалось инициализировать приложение') + '</p>' +
+            '<p style="color:#ffffff;font-size:14px;margin-top:8px;">' + msg + '</p>' +
             '<button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;font-weight:bold;border-radius:12px;background:#fde047;border:2px solid #000;color:#000;cursor:pointer;">Повторить попытку</button>' +
           '</div>';
         }
