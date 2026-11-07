@@ -16,8 +16,11 @@ const getGridPos = (index) => {
     return { row: row + 1, col: col + 1 };
 };
 
-const EMOJI_AVATARS = ['😎', '🤪', '🤡', '👽', '🤖', '😺', '🤠', '🦊'];
-const PLAYER_COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FFCC00', '#AF52DE', '#FF9500'];
+const EMOJI_AVATARS = ['😎', '🤪', '🤡', '👽', '🤖', '😺', '🤠', '🦊', '🥳', '👻'];
+const PLAYER_COLORS = [
+    '#FF3B30', '#007AFF', '#34C759', '#FFCC00', '#AF52DE', 
+    '#FF9500', '#00E5FF', '#FF2D55', '#30D158', '#E040FB'
+];
 
 const isSafeImageSrc = (src) => {
     if (!src || typeof src !== 'string') return false;
@@ -33,54 +36,77 @@ const getSortedStandings = (playersObj) => {
     });
 };
 
-// Смещение фишек, если на одной клетке несколько игроков
+// Смещение фишек для поддержки до 10 игроков на одной клетке
 const getPawnOffset = (indexInCell, totalInCell) => {
     if (totalInCell <= 1) return { x: 0, y: 0, scale: 1 };
     if (totalInCell === 2) {
-        return { x: indexInCell === 0 ? -22 : 22, y: 0, scale: 0.9 };
+        return { x: indexInCell === 0 ? -18 : 18, y: 0, scale: 0.85 };
     }
     if (totalInCell === 3) {
         const offsets = [
-            { x: -22, y: -12 },
-            { x: 22, y: -12 },
-            { x: 0, y: 16 }
+            { x: -18, y: -10 },
+            { x: 18, y: -10 },
+            { x: 0, y: 14 }
         ];
-        return { ...(offsets[indexInCell] || { x: 0, y: 0 }), scale: 0.85 };
+        return { ...(offsets[indexInCell] || { x: 0, y: 0 }), scale: 0.8 };
     }
-    const offsets = [
-        { x: -22, y: -16 },
-        { x: 22, y: -16 },
-        { x: -22, y: 16 },
-        { x: 22, y: 16 },
-        { x: 0, y: -22 },
-        { x: 0, y: 22 }
-    ];
-    return { ...(offsets[indexInCell % offsets.length] || { x: 0, y: 0 }), scale: 0.8 };
+    if (totalInCell === 4) {
+        const offsets = [
+            { x: -18, y: -14 },
+            { x: 18, y: -14 },
+            { x: -18, y: 14 },
+            { x: 18, y: 14 }
+        ];
+        return { ...(offsets[indexInCell] || { x: 0, y: 0 }), scale: 0.75 };
+    }
+
+    // Расстановка по кругу для 5..10 игроков
+    const angle = (indexInCell / totalInCell) * 2 * Math.PI;
+    const radius = 24;
+    return {
+        x: Math.round(Math.cos(angle) * radius),
+        y: Math.round(Math.sin(angle) * radius),
+        scale: totalInCell > 6 ? 0.6 : 0.7
+    };
 };
 
 const Pawn = ({ color, selfie, isWalking, position, offsetIndex = 0, totalOnCell = 1 }) => {
     const pos = getGridPos(position || 0);
     const { x, y, scale } = getPawnOffset(offsetIndex, totalOnCell);
+    const playerColor = color || '#FF3B30';
 
     return (
         <div 
-            className={`pawn-wrapper ${isWalking ? 'pawn-walking' : ''} absolute pointer-events-none transition-all duration-300 z-20 flex flex-col items-center justify-center`}
+            className={`pawn-wrapper ${isWalking ? 'pawn-walking' : ''} absolute pointer-events-none transition-all duration-300 flex flex-col items-center justify-center`}
             style={{ 
                 gridRow: pos.row, 
                 gridColumn: pos.col,
-                '--player-color': color,
+                '--player-color': playerColor,
                 transform: `translate(${x}px, ${y}px) scale(${scale})`,
-                zIndex: 20 + offsetIndex
+                zIndex: isWalking ? 999 : (20 + offsetIndex)
             }}
         >
-            <div className="pawn-selfie-head" style={{ '--player-color': color, borderColor: color }}>
+            <div 
+                className="pawn-selfie-head" 
+                style={{ 
+                    backgroundColor: playerColor, 
+                    borderColor: playerColor, 
+                    '--player-color': playerColor 
+                }}
+            >
                 {isSafeImageSrc(selfie) ? (
                     <img src={selfie} alt="head" className="w-full h-full object-cover rounded-full" />
                 ) : (
                     <span className="text-3xl select-none">{selfie || '👤'}</span>
                 )}
             </div>
-            <div className="pawn-body" style={{ '--player-color': color, backgroundColor: color }}></div>
+            <div 
+                className="pawn-body" 
+                style={{ 
+                    backgroundColor: playerColor, 
+                    '--player-color': playerColor 
+                }}
+            ></div>
         </div>
     );
 };
@@ -130,7 +156,7 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
     const handleTake = async () => {
         const videoEl = videoRef.current;
         if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) {
-            return; // Ждем полной инициализации кадра, чтобы избежать черного фото
+            return;
         }
         try {
             if (window.captureSelfie) {
@@ -138,11 +164,14 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
                 setPhoto(base64);
             } else {
                 const canvas = document.createElement('canvas');
-                canvas.width = 120;
-                canvas.height = 120;
+                canvas.width = 256;
+                canvas.height = 256;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(videoEl, 0, 0, 120, 120);
-                setPhoto(canvas.toDataURL('image/jpeg', 0.65));
+                const minDim = Math.min(videoEl.videoWidth, videoEl.videoHeight);
+                const startX = (videoEl.videoWidth - minDim) / 2;
+                const startY = (videoEl.videoHeight - minDim) / 2;
+                ctx.drawImage(videoEl, startX, startY, minDim, minDim, 0, 0, 256, 256);
+                setPhoto(canvas.toDataURL('image/jpeg', 0.85));
             }
         } catch (e) {
             console.error(e);
@@ -231,7 +260,7 @@ const StartScreen = () => {
         <div className="flex flex-col items-center justify-center h-full p-4 tv-container">
             <div className="glass-card p-8 max-w-md w-full text-center space-y-6">
                 <h1 className="text-5xl font-black mb-4 text-yellow-300 drop-shadow-md">
-                    Party Board Quiz
+                    Пати Квиз
                 </h1>
                 <div className="auto-timer-badge text-sm font-bold text-yellow-300 bg-black/40 border-2 border-black px-4 py-2 rounded-full inline-block">
                     Автоматическое создание комнаты через: {countdown} сек...
@@ -261,8 +290,9 @@ const TVApp = ({ roomId, dbUrl }) => {
     const [walkingPlayerId, setWalkingPlayerId] = useState(null);
     const [isAnimatingRoundMoves, setIsAnimatingRoundMoves] = useState(false);
     const [timeLeft, setTimeLeft] = useState(0);
-    const [lobbyCountdown, setLobbyCountdown] = useState(15);
+    const [lobbyCountdown, setLobbyCountdown] = useState(60);
     const qrRef = useRef(null);
+    const lobbyAudioRef = useRef(null);
 
     const roundCorrectRef = useRef({});
     const currentQuestionsRef = useRef([]);
@@ -272,15 +302,49 @@ const TVApp = ({ roomId, dbUrl }) => {
     const baseUrl = window.location.origin + window.location.pathname;
     const joinUrl = `${baseUrl}?role=player&room=${roomId}${dbUrl ? `&db=${encodeURIComponent(dbUrl)}` : ''}`;
 
+    // Музыка лобби: music/start.mp3
+    const stopLobbyMusic = useCallback(() => {
+        if (lobbyAudioRef.current) {
+            try {
+                lobbyAudioRef.current.pause();
+                lobbyAudioRef.current.currentTime = 0;
+            } catch (e) {
+                console.log("Audio stop error", e);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        const audio = new Audio('music/start.mp3');
+        audio.loop = true;
+        lobbyAudioRef.current = audio;
+
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(err => {
+                console.log("start.mp3 autoplay policy waiting for user interaction or file not found:", err);
+            });
+        }
+
+        return () => {
+            if (lobbyAudioRef.current) {
+                lobbyAudioRef.current.pause();
+                lobbyAudioRef.current.currentTime = 0;
+                lobbyAudioRef.current = null;
+            }
+        };
+    }, []);
+
     const startNewRound = useCallback(() => {
+        stopLobbyMusic();
         if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
 
         const currentPlayed = window.GameSync?._getState()?.playedCategories || gameState?.playedCategories || [];
         const allCategories = window.QuestionBank?.categories || [];
         
         let availableCategories = allCategories.filter(c => !currentPlayed.includes(c.id));
-        if (availableCategories.length < 3) availableCategories = allCategories;
-        const categories = [...availableCategories].sort(() => 0.5 - Math.random()).slice(0, 3);
+        if (availableCategories.length < 6) availableCategories = allCategories;
+        const categories = [...availableCategories].sort(() => 0.5 - Math.random()).slice(0, 6);
 
         roundCorrectRef.current = {};
         Object.keys(gameState?.players || {}).forEach(pid => {
@@ -297,7 +361,7 @@ const TVApp = ({ roomId, dbUrl }) => {
             currentQuestions: [],
             roundMoves: {}
         });
-    }, [gameState?.playedCategories, gameState?.players]);
+    }, [gameState?.playedCategories, gameState?.players, stopLobbyMusic]);
 
     useEffect(() => {
         try {
@@ -328,12 +392,12 @@ const TVApp = ({ roomId, dbUrl }) => {
         };
     }, [roomId, dbUrl]);
 
-    // Авто-таймер лобби на ТВ
+    // Авто-таймер лобби на ТВ: 60 секунд
     useEffect(() => {
         const numPlayers = Object.keys(gameState?.players || {}).length;
         if (gameState?.phase === 'lobby' && numPlayers >= 1) {
             if (!lobbyTimerRef.current) {
-                setLobbyCountdown(15);
+                setLobbyCountdown(60);
                 lobbyTimerRef.current = setInterval(() => {
                     setLobbyCountdown(prev => {
                         if (prev <= 1) {
@@ -351,7 +415,7 @@ const TVApp = ({ roomId, dbUrl }) => {
                 clearInterval(lobbyTimerRef.current);
                 lobbyTimerRef.current = null;
             }
-            setLobbyCountdown(15);
+            setLobbyCountdown(60);
         }
 
         return () => {
@@ -453,6 +517,16 @@ const TVApp = ({ roomId, dbUrl }) => {
         for (const pid of Object.keys(playersCopy)) {
             const steps = roundCorrectRef.current[pid] || 0;
             let currentPos = playersCopy[pid].position || 0;
+
+            // Воспроизведение записанного победного клича игрока во время его хода
+            if (steps > 0 && playersCopy[pid].cheerAudio) {
+                try {
+                    const cheer = new Audio(playersCopy[pid].cheerAudio);
+                    cheer.play().catch(e => console.log("Cheer audio playback prevented or failed:", e));
+                } catch (err) {
+                    console.log("Cheer audio play error:", err);
+                }
+            }
 
             for (let s = 0; s < steps; s++) {
                 if (currentPos >= TOTAL_CELLS - 1) break;
@@ -560,7 +634,7 @@ const TVApp = ({ roomId, dbUrl }) => {
     const currentQ = questionsList[currentQuestionIndex] || null;
     const currentQCorrectIndex = currentQ ? (currentQ.correctIndex ?? currentQ.correct ?? 0) : 0;
 
-    // Группировка игроков по клеткам для предотвращения наложения
+    // Группировка игроков по клеткам
     const cellOccupantsMap = {};
     playersList.forEach(p => {
         const cellPos = visualPositions[p.id] ?? p.position ?? 0;
@@ -568,8 +642,17 @@ const TVApp = ({ roomId, dbUrl }) => {
         cellOccupantsMap[cellPos].push(p.id);
     });
 
+    const triggerUserGestureAudio = () => {
+        if (gameState?.phase === 'lobby' && lobbyAudioRef.current && lobbyAudioRef.current.paused) {
+            lobbyAudioRef.current.play().catch(() => {});
+        }
+    };
+
     return (
-        <div className="tv-container relative w-screen h-screen flex flex-col p-0 m-0 overflow-hidden">
+        <div 
+            onClick={triggerUserGestureAudio}
+            className="tv-container relative w-screen h-screen flex flex-col p-0 m-0 overflow-hidden"
+        >
             <div className={`board-grid w-full h-full absolute inset-0 z-0 p-4 transition-all duration-500 ${phase === 'board_move' ? 'opacity-100 scale-100' : 'opacity-25 filter blur-[1px]'}`}>
                 {Array.from({ length: TOTAL_CELLS }).map((_, i) => {
                     const pos = getGridPos(i);
@@ -631,12 +714,15 @@ const TVApp = ({ roomId, dbUrl }) => {
                                 Игра начнется автоматически через {lobbyCountdown} сек (или подключите еще игроков)
                             </div>
                         )}
-                        <h3 className="text-xl mb-3 font-bold text-yellow-200">Игроки ({playersList.length}/4):</h3>
-                        <div className="flex justify-center gap-6 mb-6 min-h-[90px]">
+                        <h3 className="text-xl mb-3 font-bold text-yellow-200">Игроки ({playersList.length}/10):</h3>
+                        <div className="flex flex-wrap justify-center gap-4 mb-6 min-h-[90px] max-w-xl mx-auto">
                             {playersList.length === 0 && <p className="text-yellow-100 self-center">Ожидание подключения с телефона...</p>}
                             {playersList.map(p => (
                                 <div key={p.id} className="flex flex-col items-center">
-                                    <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-black mb-2 bg-white flex items-center justify-center" style={{ backgroundColor: p.color }}>
+                                    <div 
+                                        className="w-16 h-16 rounded-full overflow-hidden border-4 border-black mb-2 flex items-center justify-center shadow-lg" 
+                                        style={{ backgroundColor: p.color || '#FF3B30', borderColor: p.color || '#000000' }}
+                                    >
                                         {isSafeImageSrc(p.selfie) ? <img src={p.selfie} className="w-full h-full object-cover" /> : <span className="text-3xl text-black">{p.selfie || '👤'}</span>}
                                     </div>
                                     <span className="font-bold text-sm max-w-[80px] truncate">{p.name}</span>
@@ -648,21 +734,26 @@ const TVApp = ({ roomId, dbUrl }) => {
                 )}
 
                 {phase === 'category_vote' && (
-                    <div className="glass-card p-8 text-center max-w-3xl w-full">
+                    <div className="glass-card p-6 text-center max-w-4xl w-full">
                         <h2 className="text-4xl font-extrabold mb-2">Выбор категории</h2>
-                        <p className="text-lg text-yellow-100 mb-6">Голосуйте с телефонов прямо сейчас!</p>
-                        <div className="timer-track mb-8">
+                        <p className="text-lg text-yellow-100 mb-4">Голосуйте с телефонов прямо сейчас!</p>
+                        <div className="timer-track mb-6">
                             <div className="timer-bar" style={{ width: `${(timeLeft / 10) * 100}%` }}></div>
                         </div>
-                        <div className="grid grid-cols-3 gap-6 mb-6">
+                        {/* 6 категорий в 3 колонки */}
+                        <div className="grid grid-cols-3 gap-4 mb-6">
                             {(categoriesToVote || []).map((cat, i) => (
-                                <div key={i} className="glass-card p-6 bg-indigo-900/60 flex flex-col items-center rounded-2xl border-4 border-black">
-                                    <span className="text-6xl mb-4">{cat.icon}</span>
-                                    <h3 className="category-card-title text-2xl font-bold mb-4">{cat.name}</h3>
-                                    <div className="flex gap-2 min-h-[40px] items-center">
+                                <div key={i} className="glass-card p-4 bg-indigo-900/60 flex flex-col items-center justify-between rounded-2xl border-4 border-black min-h-[140px]">
+                                    <span className="text-4xl md:text-5xl mb-2">{cat.icon}</span>
+                                    <h3 className="category-card-title text-xl md:text-2xl font-bold mb-2 text-center">{cat.name}</h3>
+                                    <div className="flex gap-1.5 min-h-[36px] items-center justify-center flex-wrap">
                                         {playersList.filter(p => categoryVotes?.[p.id] === cat.id).map(p => (
-                                            <div key={p.id} className="w-10 h-10 rounded-full border-2 border-black overflow-hidden bg-white flex items-center justify-center shadow-md" style={{ borderColor: p.color }}>
-                                                {isSafeImageSrc(p.selfie) ? <img src={p.selfie} className="w-full h-full object-cover" /> : <span className="text-sm font-bold text-black">{p.selfie || '👤'}</span>}
+                                            <div 
+                                                key={p.id} 
+                                                className="w-8 h-8 rounded-full border-2 border-black overflow-hidden flex items-center justify-center shadow-md" 
+                                                style={{ backgroundColor: p.color || '#FF3B30', borderColor: p.color || '#000000' }}
+                                            >
+                                                {isSafeImageSrc(p.selfie) ? <img src={p.selfie} className="w-full h-full object-cover" /> : <span className="text-xs font-bold text-black">{p.selfie || '👤'}</span>}
                                             </div>
                                         ))}
                                     </div>
@@ -675,7 +766,7 @@ const TVApp = ({ roomId, dbUrl }) => {
 
                 {(phase === 'question' || phase === 'answer_reveal') && currentQ && (
                     <div className="glass-card p-8 text-center max-w-4xl w-full">
-                        <div className="flex justify-between items-center mb-6">
+                        <div className="flex justify-between items-center mb-4">
                             <span className="text-2xl text-yellow-300 font-black uppercase">Вопрос {currentQuestionIndex + 1} из 4</span>
                             <span className="text-4xl font-mono font-black bg-black text-yellow-300 px-6 py-1.5 rounded-xl border-2 border-black">
                                 {phase === 'answer_reveal' ? '✓ Ответ' : `${timeLeft}s`}
@@ -683,17 +774,17 @@ const TVApp = ({ roomId, dbUrl }) => {
                         </div>
 
                         {currentQ.imageUrl && isSafeImageSrc(currentQ.imageUrl) && (
-                            <div className="mb-6 flex justify-center">
+                            <div className="mb-5 flex justify-center">
                                 <img 
                                     src={currentQ.imageUrl} 
                                     alt="question" 
-                                    className="max-h-60 max-w-full rounded-2xl border-4 border-black object-contain bg-black/40 shadow-xl" 
+                                    className="max-h-56 max-w-full rounded-2xl border-4 border-black object-contain bg-black/40 shadow-xl" 
                                 />
                             </div>
                         )}
 
-                        <h2 className="text-3xl md:text-4xl font-black mb-8 leading-snug">{currentQ.text || currentQ.q}</h2>
-                        <div className="grid grid-cols-2 gap-6">
+                        <h2 className="text-3xl md:text-4xl font-black mb-6 leading-snug">{currentQ.text || currentQ.q}</h2>
+                        <div className="grid grid-cols-2 gap-5">
                             {currentQ.options.map((opt, i) => {
                                 const isResultPhase = phase === 'answer_reveal';
                                 const isCorrect = isResultPhase && i === currentQCorrectIndex;
@@ -705,10 +796,14 @@ const TVApp = ({ roomId, dbUrl }) => {
                                     <div key={i} className={`quiz-btn ${letterClass} ${isCorrect ? 'quiz-btn-correct' : ''} ${isWrong ? 'opacity-40' : ''} relative !cursor-default`} style={{ justifyContent: 'center' }}>
                                         <div className="quiz-btn-text text-center text-2xl font-bold">{opt}</div>
                                         {isResultPhase && (
-                                            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 flex gap-2 z-30">
+                                            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 flex gap-1.5 z-30">
                                                 {playersChosenThis.map(p => (
-                                                    <div key={p.id} className="w-12 h-12 rounded-full border-4 border-black overflow-hidden bg-white flex items-center justify-center shadow-lg" style={{ backgroundColor: p.color }}>
-                                                        {isSafeImageSrc(p.selfie) ? <img src={p.selfie} className="w-full h-full object-cover" /> : <span className="text-xl text-black font-bold">{p.selfie || '👤'}</span>}
+                                                    <div 
+                                                        key={p.id} 
+                                                        className="w-11 h-11 rounded-full border-3 border-black overflow-hidden flex items-center justify-center shadow-lg" 
+                                                        style={{ backgroundColor: p.color || '#FF3B30' }}
+                                                    >
+                                                        {isSafeImageSrc(p.selfie) ? <img src={p.selfie} className="w-full h-full object-cover" /> : <span className="text-lg text-black font-bold">{p.selfie || '👤'}</span>}
                                                     </div>
                                                 ))}
                                             </div>
@@ -722,7 +817,7 @@ const TVApp = ({ roomId, dbUrl }) => {
 
                 {phase === 'round_summary' && (
                     <div className="round-summary-modal fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6">
-                        <div className="glass-card max-w-2xl w-full p-8 text-center">
+                        <div className="glass-card max-w-2xl w-full p-8 text-center max-h-[90vh] overflow-y-auto">
                             <h2 className="text-4xl font-black mb-2 text-yellow-300">Итоги раунда</h2>
                             <p className="text-lg text-yellow-100 mb-4">Фигурки продвинулись вперед!</p>
                             <div className="timer-track mb-6">
@@ -742,7 +837,10 @@ const TVApp = ({ roomId, dbUrl }) => {
                                                 <div className={`round-summary-badge w-10 h-10 rounded-full flex items-center justify-center font-black text-xl border-2 border-black ${badgeClass}`}>
                                                     {moveData.rank}
                                                 </div>
-                                                <div className="w-12 h-12 rounded-full border-3 border-black overflow-hidden bg-white flex items-center justify-center" style={{ backgroundColor: p.color }}>
+                                                <div 
+                                                    className="w-12 h-12 rounded-full border-3 border-black overflow-hidden flex items-center justify-center" 
+                                                    style={{ backgroundColor: p.color || '#FF3B30' }}
+                                                >
                                                     {isSafeImageSrc(p.selfie) ? <img src={p.selfie} className="w-full h-full object-cover" /> : <span className="text-2xl text-black">{p.selfie || '👤'}</span>}
                                                 </div>
                                                 <div className="text-left">
@@ -766,7 +864,10 @@ const TVApp = ({ roomId, dbUrl }) => {
                     <div className="glass-card p-12 text-center border-4 border-black max-w-xl">
                         <h1 className="text-6xl font-black mb-6 text-yellow-300 drop-shadow-lg">ПОБЕДИТЕЛЬ!</h1>
                         <div className="flex flex-col items-center">
-                            <div className="w-48 h-48 rounded-full border-8 border-black mb-4 overflow-hidden bg-white flex items-center justify-center" style={{ backgroundColor: players[winnerId].color }}>
+                            <div 
+                                className="w-48 h-48 rounded-full border-8 border-black mb-4 overflow-hidden flex items-center justify-center" 
+                                style={{ backgroundColor: players[winnerId].color || '#FF3B30' }}
+                            >
                                 {isSafeImageSrc(players[winnerId].selfie) ? <img src={players[winnerId].selfie} className="w-full h-full object-cover" /> : <span className="text-7xl text-black">{players[winnerId].selfie || '👤'}</span>}
                             </div>
                             <h2 className="text-5xl font-black text-white">{players[winnerId].name}</h2>
@@ -784,10 +885,19 @@ const MobileApp = ({ roomId, dbUrl }) => {
     const [playerId, setPlayerId] = useState(localStorage.getItem('tv_game_player_id') || localStorage.getItem('playerId') || null);
     const [isJoined, setIsJoined] = useState(false);
     const [name, setName] = useState('');
-    const [color, setColor] = useState('');
+    const [color, setColor] = useState(PLAYER_COLORS[0]);
     const [selfie, setSelfie] = useState(null);
     const [showCameraModal, setShowCameraModal] = useState(false);
     const [timeLeft, setTimeLeft] = useState(0);
+
+    // Состояния аудио победного клича (3 секунды)
+    const [cheerAudio, setCheerAudio] = useState(null);
+    const [isRecordingCheer, setIsRecordingCheer] = useState(false);
+    const [cheerCountdown, setCheerCountdown] = useState(3);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const recordTimerRef = useRef(null);
+    const cheerPreviewRef = useRef(null);
 
     const handleCloseCamera = useCallback(() => {
         setShowCameraModal(false);
@@ -807,6 +917,13 @@ const MobileApp = ({ roomId, dbUrl }) => {
         } catch (err) {
             console.error("Player sync init error", err);
         }
+
+        return () => {
+            if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                try { mediaRecorderRef.current.stop(); } catch(e) {}
+            }
+        };
     }, [roomId, dbUrl, playerId]);
 
     useEffect(() => {
@@ -837,9 +954,85 @@ const MobileApp = ({ roomId, dbUrl }) => {
         }
     }, [usedColors, color]);
 
+    // Запись 3-секундного победного клича
+    const startRecordingCheer = async () => {
+        if (isRecordingCheer) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioChunksRef.current = [];
+
+            let mimeType = '';
+            if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+            else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+            else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+
+            const options = mimeType ? { mimeType } : {};
+            const mediaRecorder = new MediaRecorder(stream, options);
+            mediaRecorderRef.current = mediaRecorder;
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setCheerAudio(reader.result);
+                    setIsRecordingCheer(false);
+                };
+                reader.readAsDataURL(blob);
+            };
+
+            mediaRecorder.start();
+            setIsRecordingCheer(true);
+            setCheerCountdown(3);
+
+            let remaining = 3;
+            if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+            recordTimerRef.current = setInterval(() => {
+                remaining -= 1;
+                setCheerCountdown(remaining);
+                if (remaining <= 0) {
+                    clearInterval(recordTimerRef.current);
+                    recordTimerRef.current = null;
+                    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                        mediaRecorderRef.current.stop();
+                    }
+                }
+            }, 1000);
+        } catch (err) {
+            console.error("Microphone error:", err);
+            alert("Не удалось получить доступ к микрофону. Клич можно пропустить.");
+            setIsRecordingCheer(false);
+        }
+    };
+
+    const playCheerPreview = () => {
+        if (!cheerAudio) return;
+        if (cheerPreviewRef.current) {
+            cheerPreviewRef.current.pause();
+        }
+        const audio = new Audio(cheerAudio);
+        cheerPreviewRef.current = audio;
+        audio.play().catch(e => console.log("Audio play error", e));
+    };
+
+    const isRoomFull = useMemo(() => {
+        const count = Object.keys(gameState?.players || {}).length;
+        return count >= 10 && !Boolean(gameState?.players?.[playerId]);
+    }, [gameState?.players, playerId]);
+
     const handleJoin = () => {
-        if (!name.trim() || !selfie || !color || usedColors.includes(color)) {
-            return alert("Заполните все данные корректно!");
+        if (isRoomFull) {
+            return alert("Комната заполнена (максимум 10 игроков)");
+        }
+        const assignedColor = color || PLAYER_COLORS.find(c => !usedColors.includes(c)) || '#FF3B30';
+        if (!name.trim() || !selfie || !assignedColor || usedColors.includes(assignedColor)) {
+            return alert("Заполните имя, выберите селфи и свободный цвет!");
         }
 
         const newId = playerId || generatePlayerId();
@@ -853,8 +1046,9 @@ const MobileApp = ({ roomId, dbUrl }) => {
                 [newId]: { 
                     id: newId, 
                     name: name.trim().slice(0, 12), 
-                    color, 
+                    color: assignedColor, 
                     selfie, 
+                    cheerAudio: cheerAudio || null,
                     position: 0, 
                     score: 0 
                 }
@@ -890,10 +1084,14 @@ const MobileApp = ({ roomId, dbUrl }) => {
         return (
             <div className="mobile-container !py-2 !px-3 overflow-y-auto flex items-center justify-center">
                 <CameraModal isOpen={showCameraModal} onClose={handleCloseCamera} onSave={setSelfie} />
-                <div className="glass-card w-full max-w-sm !p-4 space-y-2.5 my-auto max-h-[94dvh] overflow-y-auto">
+                <div className="glass-card w-full max-w-sm !p-4 space-y-2.5 my-auto max-h-[96dvh] overflow-y-auto">
                     <h2 className="text-2xl font-black text-center text-yellow-300 leading-tight">Вход в игру</h2>
+                    
                     <div className="flex flex-col items-center gap-2">
-                        <div className="camera-preview-container relative w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-black border-3 border-black shrink-0" style={{ backgroundColor: color || '#fde047' }}>
+                        <div 
+                            className="camera-preview-container relative w-16 h-16 rounded-full overflow-hidden flex items-center justify-center border-3 border-black shrink-0 shadow-md" 
+                            style={{ backgroundColor: color || '#FF3B30', borderColor: color || '#000000' }}
+                        >
                             {!selfie && <div className="absolute inset-0 flex items-center justify-center text-2xl">👤</div>}
                             {isSafeImageSrc(selfie) && <img src={selfie} className="w-full h-full object-cover" />}
                             {selfie && !isSafeImageSrc(selfie) && <div className="w-full h-full bg-white flex items-center justify-center text-3xl text-black">{selfie}</div>}
@@ -905,6 +1103,7 @@ const MobileApp = ({ roomId, dbUrl }) => {
                             ))}
                         </div>
                     </div>
+
                     <input 
                         type="text" 
                         value={name} 
@@ -913,15 +1112,72 @@ const MobileApp = ({ roomId, dbUrl }) => {
                         maxLength="12"
                         className="!py-2 !px-3 !text-base"
                     />
-                    <div className="flex justify-center gap-2 flex-wrap pt-0.5">
+
+                    {/* Выбор цвета из 10 цветов с белой подсветкой выбранного */}
+                    <div className="color-picker-grid grid grid-cols-5 gap-2 pt-1 justify-items-center w-full">
                         {PLAYER_COLORS.map(c => {
                             const isTaken = usedColors.includes(c);
+                            const isSelected = color === c;
                             return (
-                                <button key={c} onClick={() => !isTaken && setColor(c)} disabled={isTaken} className={`w-8 h-8 rounded-full border-3 ${color === c ? 'scale-110 border-white shadow-lg' : 'border-black'} ${isTaken ? 'opacity-30' : ''}`} style={{ backgroundColor: c }}></button>
+                                <button 
+                                    key={c} 
+                                    type="button"
+                                    onClick={() => !isTaken && setColor(c)} 
+                                    disabled={isTaken} 
+                                    className={`color-select-btn w-9 h-9 rounded-full flex items-center justify-center font-black text-white text-base transition-transform ${isSelected ? 'selected' : ''}`} 
+                                    style={{ backgroundColor: c }}
+                                >
+                                    {isSelected ? '✓' : ''}
+                                </button>
                             );
                         })}
                     </div>
-                    <button onClick={handleJoin} className="primary-btn w-full !mt-2 text-lg !py-2.5">Войти в игру</button>
+
+                    {/* Запись победного клича (3 секунды) */}
+                    <div className="w-full bg-black/30 p-2.5 rounded-xl border-2 border-black flex flex-col items-center gap-2">
+                        <div className="text-xs font-black text-yellow-300 uppercase tracking-wide">Победный клич (3 сек)</div>
+                        {!cheerAudio ? (
+                            <button 
+                                type="button"
+                                onClick={startRecordingCheer}
+                                disabled={isRecordingCheer}
+                                className={`primary-btn audio-record-btn w-full !py-2 text-sm ${isRecordingCheer ? 'audio-record-active !bg-red-600 animate-pulse text-white' : '!bg-amber-400'}`}
+                            >
+                                {isRecordingCheer ? `🔴 Запись клича... (${cheerCountdown} сек)` : '🎤 Записать победный клич'}
+                            </button>
+                        ) : (
+                            <div className="flex gap-2 w-full">
+                                <button 
+                                    type="button" 
+                                    onClick={playCheerPreview} 
+                                    className="primary-btn flex-1 !py-2 text-sm !bg-emerald-500 hover:!bg-emerald-600"
+                                >
+                                    ▶️ Прослушать
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setCheerAudio(null); startRecordingCheer(); }} 
+                                    className="primary-btn flex-1 !py-2 text-sm !bg-gray-600 hover:!bg-gray-700"
+                                >
+                                    🔄 Переписать
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {isRoomFull && (
+                        <div className="text-red-400 font-bold text-center text-sm">
+                            Комната заполнена (максимум 10 игроков)
+                        </div>
+                    )}
+
+                    <button 
+                        onClick={handleJoin} 
+                        disabled={isRoomFull} 
+                        className="primary-btn w-full !mt-2 text-lg !py-2.5"
+                    >
+                        {isRoomFull ? 'Комната заполнена' : 'Войти в игру'}
+                    </button>
                 </div>
             </div>
         );
@@ -938,7 +1194,10 @@ const MobileApp = ({ roomId, dbUrl }) => {
         <div className="mobile-container select-none">
             <div className="glass-card p-3 mb-2 flex items-center justify-between !py-2 !px-4 !rounded-2xl shrink-0">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full border-2 border-black overflow-hidden bg-white flex items-center justify-center" style={{ backgroundColor: myPlayer.color }}>
+                    <div 
+                        className="w-10 h-10 rounded-full border-2 border-black overflow-hidden flex items-center justify-center" 
+                        style={{ backgroundColor: myPlayer.color || '#FF3B30' }}
+                    >
                          {isSafeImageSrc(myPlayer.selfie) ? <img src={myPlayer.selfie} className="w-full h-full object-cover" /> : <span className="text-xl text-black">{myPlayer.selfie || '👤'}</span>}
                     </div>
                     <div>
@@ -957,13 +1216,24 @@ const MobileApp = ({ roomId, dbUrl }) => {
                 )}
 
                 {phase === 'category_vote' && (
-                    <div className="flex flex-col gap-3 h-full justify-center">
-                        <h2 className="text-2xl font-black text-center mb-2">Выберите тему:</h2>
-                        {(categoriesToVote || []).map(cat => (
-                            <button key={cat.id} onClick={() => sendVote(cat.id)} disabled={hasVoted} className={`glass-card flex items-center gap-4 text-xl font-black w-full p-4 transition-all ${categoryVotes?.[playerId] === cat.id ? '!bg-yellow-400 !text-black !border-black' : ''} ${hasVoted && categoryVotes?.[playerId] !== cat.id ? 'opacity-40 grayscale' : ''}`}>
-                                <span className="text-4xl">{cat.icon}</span><span className="category-card-title">{cat.name}</span>
-                            </button>
-                        ))}
+                    <div className="flex flex-col gap-2 h-full justify-center overflow-y-auto py-2">
+                        <h2 className="text-xl font-black text-center mb-1 text-yellow-300">Выберите тему (из 6):</h2>
+                        <div className="grid grid-cols-2 gap-2">
+                            {(categoriesToVote || []).map(cat => {
+                                const isChosen = categoryVotes?.[playerId] === cat.id;
+                                return (
+                                    <button 
+                                        key={cat.id} 
+                                        onClick={() => sendVote(cat.id)} 
+                                        disabled={hasVoted} 
+                                        className={`glass-card flex flex-col items-center justify-center text-center p-3 transition-all min-h-[90px] ${isChosen ? '!bg-yellow-400 !text-black !border-black font-black' : ''} ${hasVoted && !isChosen ? 'opacity-40 grayscale' : ''}`}
+                                    >
+                                        <span className="text-3xl mb-1">{cat.icon}</span>
+                                        <span className="category-card-title text-sm font-bold line-clamp-2">{cat.name}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
 
