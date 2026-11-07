@@ -174,7 +174,7 @@ window.QuestionBank = {
     ],
     geek_humor: [
       { id: "geek1", text: "Как программисты называют не баг, а фичу?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9E%D1%88%D0%B8%D0%B1%D0%BA%D0%B0%20%D0%B2%20%D0%BA%D0%BE%D0%B4%D0%B5%20%D0%B1%D0%B0%D0%B3%20meme&w=640&h=420&c=7", options: ["Особенность архитектуры", "Случайность", "Секретный уровень", "Пасхалка"], correctIndex: 0 },
-      { id: "geek2", text: "Какой синий экран пугает всех пользователей Windows?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A1%D0%B8%D0%BD%D0%B8%D0%B9%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%20%D1%81%D0%BC%D0%B5%D1%80%D1%82%D0%B8%20BSOD%20Windows&w=640&h=420&c=7", options: ["Синий экран смерти", "Экран перезагрузки", "Окно биоса", "Панель задач"], correctIndex: 0 },
+      { id: "geek2", text: "Какой синий экран пугает всех пользователей Windows?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%A1%D0%B8%D0%BD%D0%B8%D0%B9%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%20%D1%81%D0%BC%D0%B5%D1%88%D0%BD%D0%BE%D0%B9%20BSOD%20Windows&w=640&h=420&c=7", options: ["Синий экран смерти", "Экран перезагрузки", "Окно биоса", "Панель задач"], correctIndex: 0 },
       { id: "geek3", text: "Что по легенде чинит любую технику у сисадмина?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9F%D0%B5%D1%80%D0%B5%D0%B7%D0%B0%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B0%20%D0%BA%D0%BE%D0%BC%D0%BF%D1%8C%D1%8E%D1%82%D0%B5%D1%80%D0%B0%20IT%20Crowd&w=640&h=420&c=7", options: ["Перезагрузка", "Удар кулаком", "Установка антивируса", "Замена монитора"], correctIndex: 0 },
       { id: "geek4", text: "Какой робот из 'Звездных войн' общается только писком и свистом?", imageUrl: "https://tse2.mm.bing.net/th?q=R2-D2%20Star%20Wars%20%D0%B4%D1%80%D0%BE%D0%B8%D0%B4&w=640&h=420&c=7", options: ["C-3PO", "R2-D2", "BB-8", "K-2SO"], correctIndex: 1 },
       { id: "geek5", text: "Какая клавиша спасает от отправки нежелательного окна?", imageUrl: "https://tse2.mm.bing.net/th?q=%D0%9A%D0%BB%D0%B0%D0%B2%D0%B8%D1%88%D0%B0%20Escape%20Esc%20%D0%BA%D0%BB%D0%B0%D0%B2%D0%B8%D0%B0%D1%82%D1%83%D1%80%D0%B0&w=640&h=420&c=7", options: ["Enter", "Esc", "Shift", "Caps Lock"], correctIndex: 1 },
@@ -194,14 +194,16 @@ window.QuestionBank = {
     ]
   },
 
-  getCategories: function(count = 6) {
-    const shuffled = [...this.categories].sort(() => 0.5 - Math.random());
+  getCategories: function(count) {
+    count = (count !== undefined && count !== null) ? count : 6;
+    var shuffled = this.categories.slice().sort(function() { return 0.5 - Math.random(); });
     return shuffled.slice(0, count);
   },
 
-  getQuestions: function(categoryId, count = 4) {
-    const list = this.items[categoryId] || this.items['cinema'] || [];
-    const shuffled = [...list].sort(() => 0.5 - Math.random());
+  getQuestions: function(categoryId, count) {
+    count = (count !== undefined && count !== null) ? count : 4;
+    var list = this.items[categoryId] || this.items['cinema'] || [];
+    var shuffled = list.slice().sort(function() { return 0.5 - Math.random(); });
     return shuffled.slice(0, count);
   }
 };
