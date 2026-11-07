@@ -1,4 +1,3 @@
-// filename: app.js
 var h = React.createElement;
 var useState = React.useState;
 var useEffect = React.useEffect;
@@ -411,6 +410,9 @@ function TVApp(props) {
     var qrRef = useRef(null);
     var lobbyAudioRef = useRef(null);
 
+    // Флаг предотвращения повторных переходов и зацикливаний фаз
+    var phaseLockRef = useRef(false);
+
     var roundCorrectRef = useRef({});
     var currentQuestionsRef = useRef([]);
     var nextPhaseTimeoutRef = useRef(null);
@@ -451,6 +453,11 @@ function TVApp(props) {
             }
         };
     }, []);
+
+    // Сброс блокировки переходов при реальной смене фазы или вопроса
+    useEffect(function() {
+        phaseLockRef.current = false;
+    }, [gameState && gameState.phase, gameState && gameState.currentQuestionIndex]);
 
     var startNewRound = useCallback(function() {
         stopLobbyMusic();
@@ -529,8 +536,7 @@ function TVApp(props) {
 
     var hasPlayersInLobby = Object.keys((gameState && gameState.players) || {}).length >= 1;
 
-    // Авто-таймер лобби на ТВ: зависимость ТОЛЬКО [gameState && gameState.phase, hasPlayersInLobby]
-    // без сброса таймера при пуллинге Firebase
+    // Авто-таймер лобби на ТВ без сброса таймера при пуллинге Firebase
     useEffect(function() {
         var timerInterval = null;
 
@@ -576,17 +582,20 @@ function TVApp(props) {
         setVisualPositions(positions);
     }, [gameState && gameState.players, isAnimatingRoundMoves]);
 
+    // Адаптивная генерация QR-кода под iPad и ТВ экраны
     useEffect(function() {
         if (gameState && gameState.phase === 'lobby' && qrRef.current) {
             qrRef.current.innerHTML = '';
             try {
+                var minDimension = Math.min(window.innerWidth || 800, window.innerHeight || 600);
+                var qrSize = Math.min(220, Math.max(140, Math.floor(minDimension * 0.25)));
                 new QRCode(qrRef.current, {
                     text: joinUrl,
-                    width: 220,
-                    height: 220,
+                    width: qrSize,
+                    height: qrSize,
                     colorDark : "#000000",
                     colorLight : "#ffffff",
-                    correctLevel : QRCode.CorrectLevel.H
+                    correctLevel : QRCode.CorrectLevel.M
                 });
             } catch(e) {
                 console.error("QR Code Error:", e);
@@ -611,7 +620,9 @@ function TVApp(props) {
     }, [gameState && gameState.timerEndTime, gameState && gameState.phase, gameState && gameState.currentQuestionIndex]);
 
     var handleVoteFinished = useCallback(function() {
-        if (!gameState) return;
+        if (!gameState || phaseLockRef.current) return;
+        phaseLockRef.current = true;
+
         var votes = gameState.categoryVotes || {};
         var voteCounts = {};
         for (var vKey in votes) {
@@ -664,7 +675,11 @@ function TVApp(props) {
     function executeRoundMovement() {
         setIsAnimatingRoundMoves(true);
 
-        window.GameSync.updateState({ phase: 'board_move', timerEndTime: 0 }).then(function() {
+        window.GameSync.updateState({
+            phase: 'board_move',
+            timerEndTime: 0,
+            playerAnswers: {}
+        }).then(function() {
             var playersCopy = JSON.parse(JSON.stringify((gameState && gameState.players) || {}));
             var initialPositions = {};
             var playerIds = Object.keys(playersCopy);
@@ -746,7 +761,9 @@ function TVApp(props) {
     }
 
     var handleShowResultPhase = useCallback(function() {
-        if (!gameState) return;
+        if (!gameState || phaseLockRef.current) return;
+        phaseLockRef.current = true;
+
         var currentQIndex = gameState.currentQuestionIndex || 0;
         var questionsList = currentQuestionsRef.current.length ? currentQuestionsRef.current : (gameState.currentQuestions || []);
         var currentQ = questionsList[currentQIndex];
@@ -786,44 +803,51 @@ function TVApp(props) {
             } else {
                 executeRoundMovement();
             }
-        }, 7000);
+        }, 5000);
     }, [gameState]);
 
     useEffect(function() {
         if (!gameState) return;
         var phase = gameState.phase;
         var timerEndTime = gameState.timerEndTime;
-        var players = gameState.players;
-        var categoryVotes = gameState.categoryVotes;
-        var playerAnswers = gameState.playerAnswers;
+        var players = gameState.players || {};
+        var categoryVotes = gameState.categoryVotes || {};
+        var playerAnswers = gameState.playerAnswers || {};
         var isTimeUp = timerEndTime > 0 && Date.now() >= timerEndTime;
 
         if (phase === 'category_vote') {
-            var numPlayers = Object.keys(players || {}).length;
-            var numVotes = Object.keys(categoryVotes || {}).length;
+            var numPlayers = Object.keys(players).length;
+            var numVotes = Object.keys(categoryVotes).length;
             if (isTimeUp || (numPlayers > 0 && numVotes >= numPlayers)) {
-                handleVoteFinished();
+                if (!phaseLockRef.current) {
+                    handleVoteFinished();
+                }
             }
         } else if (phase === 'question') {
-            var numPlayersQ = Object.keys(players || {}).length;
-            var numAnswersQ = Object.keys(playerAnswers || {}).length;
+            var numPlayersQ = Object.keys(players).length;
+            var numAnswersQ = Object.keys(playerAnswers).length;
             if (isTimeUp || (numPlayersQ > 0 && numAnswersQ >= numPlayersQ)) {
-                handleShowResultPhase();
+                if (!phaseLockRef.current) {
+                    handleShowResultPhase();
+                }
             }
         } else if (phase === 'round_summary') {
             if (isTimeUp) {
-                var winner = null;
-                var pList = players ? Object.values(players) : [];
-                for (var i = 0; i < pList.length; i++) {
-                    if ((pList[i].position || 0) >= TOTAL_CELLS - 1) {
-                        winner = pList[i];
-                        break;
+                if (!phaseLockRef.current) {
+                    phaseLockRef.current = true;
+                    var winner = null;
+                    var pList = players ? Object.values(players) : [];
+                    for (var i = 0; i < pList.length; i++) {
+                        if ((pList[i].position || 0) >= TOTAL_CELLS - 1) {
+                            winner = pList[i];
+                            break;
+                        }
                     }
-                }
-                if (winner) {
-                    window.GameSync.updateState({ phase: 'finish', winnerId: winner.id });
-                } else {
-                    startNewRound();
+                    if (winner) {
+                        window.GameSync.updateState({ phase: 'finish', winnerId: winner.id });
+                    } else {
+                        startNewRound();
+                    }
                 }
             }
         }
@@ -920,8 +944,9 @@ function TVApp(props) {
         });
     });
 
-    var boardGridClass = 'board-grid w-full h-full absolute inset-0 z-0 p-4 transition-all duration-500 ' +
-        (phase === 'board_move' ? 'opacity-100 scale-100' : 'opacity-25 filter blur-[1px]');
+    // Поле всегда лежит абсолютным слоем на весь экран ТВ / iPad
+    var boardGridClass = 'board-grid absolute inset-0 w-full h-full pointer-events-none transition-all duration-500 ' +
+        (phase === 'board_move' ? 'opacity-100 z-10' : 'opacity-20 filter blur-[1px] z-0');
 
     var phaseContent = null;
 
@@ -942,18 +967,18 @@ function TVApp(props) {
                 );
             });
 
-        phaseContent = h('div', { className: 'glass-card p-8 text-center max-w-2xl w-full' },
-            h('h2', { className: 'text-5xl font-black mb-4' },
+        phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-2xl w-full my-auto' },
+            h('h2', { className: 'text-4xl md:text-5xl font-black mb-3' },
                 'Код комнаты: ',
                 h('span', { className: 'text-yellow-300 tracking-widest' }, roomId)
             ),
-            h('div', { className: 'flex flex-col items-center justify-center mb-6' },
+            h('div', { className: 'flex flex-col items-center justify-center mb-4' },
                 h('div', {
                     ref: qrRef,
-                    className: 'bg-white p-3 rounded-2xl inline-block border-4 border-black min-w-[240px] min-h-[240px] flex items-center justify-center'
+                    className: 'bg-white p-3 rounded-2xl inline-flex border-4 border-black items-center justify-center shadow-lg'
                 }),
-                h('div', { className: 'mt-4 w-full bg-black/50 p-3 rounded-xl border-2 border-black' },
-                    h('p', { className: 'text-xs text-gray-300 uppercase tracking-wider mb-1' }, 'Или откройте ссылку:'),
+                h('div', { className: 'mt-3 w-full max-w-md bg-black/50 p-2.5 rounded-xl border-2 border-black' },
+                    h('p', { className: 'text-xs text-gray-300 uppercase tracking-wider mb-0.5' }, 'Или откройте ссылку:'),
                     h('a', {
                         href: joinUrl,
                         className: 'text-yellow-300 hover:text-yellow-200 underline font-mono text-xs break-all'
@@ -963,12 +988,12 @@ function TVApp(props) {
             playersList.length >= 1 ? h('div', {
                 className: 'auto-timer-badge text-sm font-bold text-black bg-yellow-300 border-2 border-black px-4 py-2 rounded-xl mb-4 animate-pulse'
             }, 'Игра начнется автоматически через ' + lobbyCountdown + ' сек (или подключите еще игроков)') : null,
-            h('h3', { className: 'text-xl mb-3 font-bold text-yellow-200' }, 'Игроки (' + playersList.length + '/10):'),
-            h('div', { className: 'flex flex-wrap justify-center gap-4 mb-6 min-h-[90px] max-w-xl mx-auto' }, lobbyAvatars),
+            h('h3', { className: 'text-lg md:text-xl mb-2 font-bold text-yellow-200' }, 'Игроки (' + playersList.length + '/10):'),
+            h('div', { className: 'flex flex-wrap justify-center gap-3 mb-4 min-h-[70px] max-w-xl mx-auto' }, lobbyAvatars),
             h('button', {
                 onClick: startNewRound,
                 disabled: playersList.length === 0,
-                className: 'primary-btn px-10 py-4 text-2xl w-full'
+                className: 'primary-btn px-10 py-3.5 text-xl md:text-2xl w-full'
             }, 'Начать игру')
         );
     } else if (phase === 'category_vote') {
@@ -988,25 +1013,25 @@ function TVApp(props) {
 
             return h('div', {
                 key: idx,
-                className: 'glass-card p-4 bg-indigo-900/60 flex flex-col items-center justify-between rounded-2xl border-4 border-black min-h-[140px]'
+                className: 'glass-card p-3 md:p-4 bg-indigo-900/60 flex flex-col items-center justify-between rounded-2xl border-4 border-black min-h-[120px]'
             },
-                h('span', { className: 'text-4xl md:text-5xl mb-2' }, cat.icon),
-                h('h3', { className: 'category-card-title text-xl md:text-2xl font-bold mb-2 text-center' }, cat.name),
-                h('div', { className: 'flex gap-1.5 min-h-[36px] items-center justify-center flex-wrap' }, voterBadges)
+                h('span', { className: 'text-3xl md:text-5xl mb-1' }, cat.icon),
+                h('h3', { className: 'category-card-title text-base md:text-2xl font-bold mb-1 text-center' }, cat.name),
+                h('div', { className: 'flex gap-1.5 min-h-[32px] items-center justify-center flex-wrap' }, voterBadges)
             );
         });
 
-        phaseContent = h('div', { className: 'glass-card p-6 text-center max-w-4xl w-full' },
-            h('h2', { className: 'text-4xl font-extrabold mb-2' }, 'Выбор категории'),
-            h('p', { className: 'text-lg text-yellow-100 mb-4' }, 'Голосуйте с телефонов прямо сейчас!'),
-            h('div', { className: 'timer-track mb-6' },
+        phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
+            h('h2', { className: 'text-3xl md:text-4xl font-extrabold mb-1' }, 'Выбор категории'),
+            h('p', { className: 'text-base md:text-lg text-yellow-100 mb-3' }, 'Голосуйте с телефонов прямо сейчас!'),
+            h('div', { className: 'timer-track mb-5' },
                 h('div', {
                     className: 'timer-bar',
                     style: { width: ((timeLeft / 10) * 100) + '%' }
                 })
             ),
-            h('div', { className: 'grid grid-cols-3 gap-4 mb-6' }, categoryCards),
-            h('div', { className: 'text-4xl font-mono font-black text-yellow-300' }, timeLeft + ' сек')
+            h('div', { className: 'categories-grid-6 mb-4' }, categoryCards),
+            h('div', { className: 'text-3xl md:text-4xl font-mono font-black text-yellow-300' }, timeLeft + ' сек')
         );
     } else if ((phase === 'question' || phase === 'answer_reveal') && currentQ) {
         var isResultPhase = phase === 'answer_reveal';
@@ -1025,7 +1050,7 @@ function TVApp(props) {
 
                     return h('div', {
                         key: p.id,
-                        className: 'w-11 h-11 rounded-full border-3 border-black overflow-hidden flex items-center justify-center shadow-lg',
+                        className: 'w-10 h-10 rounded-full border-3 border-black overflow-hidden flex items-center justify-center shadow-lg',
                         style: { backgroundColor: p.color || '#FF3B30' }
                     }, head);
                 });
@@ -1040,32 +1065,32 @@ function TVApp(props) {
                 className: btnClass,
                 style: { justifyContent: 'center' }
             },
-                h('div', { className: 'quiz-btn-text text-center text-2xl font-bold' }, opt),
+                h('div', { className: 'quiz-btn-text text-center text-xl md:text-2xl font-bold' }, opt),
                 badges
             );
         });
 
         var imageElement = null;
         if (currentQ.imageUrl && isSafeImageSrc(currentQ.imageUrl)) {
-            imageElement = h('div', { className: 'mb-5 flex justify-center' },
+            imageElement = h('div', { className: 'mb-4 flex justify-center' },
                 h('img', {
                     src: currentQ.imageUrl,
                     alt: 'question',
-                    className: 'max-h-56 max-w-full rounded-2xl border-4 border-black object-contain bg-black/40 shadow-xl'
+                    className: 'max-h-48 max-w-full rounded-2xl border-4 border-black object-contain bg-black/40 shadow-xl'
                 })
             );
         }
 
-        phaseContent = h('div', { className: 'glass-card p-8 text-center max-w-4xl w-full' },
-            h('div', { className: 'flex justify-between items-center mb-4' },
-                h('span', { className: 'text-2xl text-yellow-300 font-black uppercase' }, 'Вопрос ' + (currentQuestionIndex + 1) + ' из 4'),
-                h('span', { className: 'text-4xl font-mono font-black bg-black text-yellow-300 px-6 py-1.5 rounded-xl border-2 border-black' },
+        phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
+            h('div', { className: 'flex justify-between items-center mb-3' },
+                h('span', { className: 'text-xl md:text-2xl text-yellow-300 font-black uppercase' }, 'Вопрос ' + (currentQuestionIndex + 1) + ' из 4'),
+                h('span', { className: 'text-3xl md:text-4xl font-mono font-black bg-black text-yellow-300 px-5 py-1 rounded-xl border-2 border-black' },
                     phase === 'answer_reveal' ? '✓ Ответ' : (timeLeft + 's')
                 )
             ),
             imageElement,
-            h('h2', { className: 'text-3xl md:text-4xl font-black mb-6 leading-snug' }, currentQ.text || currentQ.q),
-            h('div', { className: 'grid grid-cols-2 gap-5' }, optionButtons)
+            h('h2', { className: 'text-2xl md:text-4xl font-black mb-5 leading-snug' }, currentQ.text || currentQ.q),
+            h('div', { className: 'grid grid-cols-2 gap-4' }, optionButtons)
         );
     } else if (phase === 'round_summary') {
         var standings = getSortedStandings(players);
@@ -1086,40 +1111,38 @@ function TVApp(props) {
                 key: p.id,
                 className: 'round-summary-item flex items-center justify-between p-3 rounded-2xl bg-indigo-900/80 border-3 border-black'
             },
-                h('div', { className: 'flex items-center gap-4' },
-                    h('div', { className: 'round-summary-badge w-10 h-10 rounded-full flex items-center justify-center font-black text-xl border-2 border-black ' + badgeClass },
+                h('div', { className: 'flex items-center gap-3 md:gap-4' },
+                    h('div', { className: 'round-summary-badge w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center font-black text-lg md:text-xl border-2 border-black ' + badgeClass },
                         moveData.rank
                     ),
                     h('div', {
-                        className: 'w-12 h-12 rounded-full border-3 border-black overflow-hidden flex items-center justify-center',
+                        className: 'w-10 h-10 md:w-12 md:h-12 rounded-full border-3 border-black overflow-hidden flex items-center justify-center',
                         style: { backgroundColor: p.color || '#FF3B30' }
                     }, head),
                     h('div', { className: 'text-left' },
-                        h('div', { className: 'font-black text-xl text-white' }, p.name),
+                        h('div', { className: 'font-black text-lg md:text-xl text-white' }, p.name),
                         h('div', { className: 'text-xs text-yellow-200 font-bold' },
                             'Клетка: ' + Math.min(TOTAL_CELLS, (moveData.currentPos || 0) + 1) + ' / ' + TOTAL_CELLS
                         )
                     )
                 ),
-                h('div', { className: 'round-summary-steps text-xl font-black px-4 py-1.5 rounded-xl border-2 border-black bg-lime-400 text-black' },
+                h('div', { className: 'round-summary-steps text-lg md:text-xl font-black px-3 py-1 md:px-4 md:py-1.5 rounded-xl border-2 border-black bg-lime-400 text-black' },
                     stepsText
                 )
             );
         });
 
-        phaseContent = h('div', { className: 'round-summary-modal fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6' },
-            h('div', { className: 'glass-card max-w-2xl w-full p-8 text-center max-h-[90vh] overflow-y-auto' },
-                h('h2', { className: 'text-4xl font-black mb-2 text-yellow-300' }, 'Итоги раунда'),
-                h('p', { className: 'text-lg text-yellow-100 mb-4' }, 'Фигурки продвинулись вперед!'),
-                h('div', { className: 'timer-track mb-6' },
-                    h('div', {
-                        className: 'timer-bar',
-                        style: { width: ((timeLeft / 6) * 100) + '%' }
-                    })
-                ),
-                h('div', { className: 'space-y-3 mb-6' }, summaryRows),
-                h('div', { className: 'text-2xl font-mono font-black text-yellow-300' }, 'Следующий раунд через ' + timeLeft + ' сек')
-            )
+        phaseContent = h('div', { className: 'glass-card max-w-2xl w-full p-6 md:p-8 text-center my-auto' },
+            h('h2', { className: 'text-3xl md:text-4xl font-black mb-1 text-yellow-300' }, 'Итоги раунда'),
+            h('p', { className: 'text-base md:text-lg text-yellow-100 mb-4' }, 'Фигурки продвинулись вперед!'),
+            h('div', { className: 'timer-track mb-5' },
+                h('div', {
+                    className: 'timer-bar',
+                    style: { width: ((timeLeft / 6) * 100) + '%' }
+                })
+            ),
+            h('div', { className: 'space-y-2.5 mb-5' }, summaryRows),
+            h('div', { className: 'text-xl md:text-2xl font-mono font-black text-yellow-300' }, 'Следующий раунд через ' + timeLeft + ' сек')
         );
     } else if (phase === 'finish' && players && winnerId && players[winnerId]) {
         var winnerP = players[winnerId];
@@ -1127,20 +1150,20 @@ function TVApp(props) {
             ? h('img', { src: winnerP.selfie, className: 'w-full h-full object-cover' })
             : h('span', { className: 'text-7xl text-black' }, winnerP.selfie || '👤');
 
-        phaseContent = h('div', { className: 'glass-card p-12 text-center border-4 border-black max-w-xl' },
-            h('h1', { className: 'text-6xl font-black mb-6 text-yellow-300 drop-shadow-lg' }, 'ПОБЕДИТЕЛЬ!'),
+        phaseContent = h('div', { className: 'glass-card p-8 md:p-12 text-center border-4 border-black max-w-xl w-full my-auto' },
+            h('h1', { className: 'text-5xl md:text-6xl font-black mb-5 text-yellow-300 drop-shadow-lg' }, 'ПОБЕДИТЕЛЬ!'),
             h('div', { className: 'flex flex-col items-center' },
                 h('div', {
-                    className: 'w-48 h-48 rounded-full border-8 border-black mb-4 overflow-hidden flex items-center justify-center',
+                    className: 'w-40 h-40 md:w-48 md:h-48 rounded-full border-8 border-black mb-4 overflow-hidden flex items-center justify-center',
                     style: { backgroundColor: winnerP.color || '#FF3B30' }
                 }, winnerHead),
-                h('h2', { className: 'text-5xl font-black text-white' }, winnerP.name)
+                h('h2', { className: 'text-4xl md:text-5xl font-black text-white' }, winnerP.name)
             ),
             h('button', {
                 onClick: function() {
                     window.location.href = window.location.origin + window.location.pathname;
                 },
-                className: 'mt-8 primary-btn text-2xl px-8 py-3'
+                className: 'mt-6 md:mt-8 primary-btn text-xl md:text-2xl px-8 py-3'
             }, 'В главное меню')
         );
     }
@@ -1159,7 +1182,7 @@ function TVApp(props) {
     },
         h('div', { className: boardGridClass }, cellElements.concat(pawnElements)),
         moveToast,
-        h('div', { className: 'relative z-10 flex-1 flex flex-col items-center justify-center p-6' }, phaseContent)
+        phaseContent ? h('div', { className: 'tv-modal-overlay' }, phaseContent) : null
     );
 }
 
@@ -1212,6 +1235,15 @@ function MobileApp(props) {
     var cheerCountdown = cheerCountdownState[0];
     var setCheerCountdown = cheerCountdownState[1];
 
+    // Локальное мгновенное состояние клика для исключения повторных нажатий и задержек
+    var localVoteState = useState(null);
+    var localVote = localVoteState[0];
+    var setLocalVote = localVoteState[1];
+
+    var localAnswerState = useState(null);
+    var localAnswer = localAnswerState[0];
+    var setLocalAnswer = localAnswerState[1];
+
     var mediaRecorderRef = useRef(null);
     var audioChunksRef = useRef([]);
     var recordTimerRef = useRef(null);
@@ -1243,6 +1275,17 @@ function MobileApp(props) {
             }
         };
     }, [roomId, dbUrl, playerId]);
+
+    // Сброс локальных мгновенных ответов при переходе на новый раунд или вопрос
+    useEffect(function() {
+        if (!gameState) return;
+        if (gameState.phase !== 'category_vote') {
+            setLocalVote(null);
+        }
+        if (gameState.phase !== 'question') {
+            setLocalAnswer(null);
+        }
+    }, [gameState && gameState.phase, gameState && gameState.currentQuestionIndex]);
 
     useEffect(function() {
         var timerInterval = null;
@@ -1385,8 +1428,7 @@ function MobileApp(props) {
         safeStorage.setItem('playerId', newId);
         safeStorage.setItem('tv_game_player_id', newId);
 
-        var existingPlayers = Object.assign({}, (gameState && gameState.players) || {});
-        existingPlayers[newId] = {
+        var newPlayerData = {
             id: newId,
             name: name.trim().slice(0, 12),
             color: assignedColor,
@@ -1396,31 +1438,51 @@ function MobileApp(props) {
             score: 0
         };
 
-        window.GameSync.updateState({
-            players: existingPlayers
-        });
+        if (window.GameSync && window.GameSync.patchPlayer) {
+            window.GameSync.patchPlayer(roomId, newId, newPlayerData);
+        } else {
+            var existingPlayers = Object.assign({}, (gameState && gameState.players) || {});
+            existingPlayers[newId] = newPlayerData;
+            window.GameSync.updateState({
+                players: existingPlayers
+            });
+        }
         setIsJoined(true);
     }
 
     function sendVote(catId) {
         if (!playerId) return;
+        if (localVote !== null) return;
         if (gameState && gameState.categoryVotes && gameState.categoryVotes[playerId]) return;
-        var existingVotes = Object.assign({}, (gameState && gameState.categoryVotes) || {});
-        existingVotes[playerId] = catId;
-        window.GameSync.updateState({
-            categoryVotes: existingVotes
-        });
+        
+        setLocalVote(catId);
+        if (window.GameSync && window.GameSync.patchVote) {
+            window.GameSync.patchVote(roomId, playerId, catId);
+        } else {
+            var existingVotes = Object.assign({}, (gameState && gameState.categoryVotes) || {});
+            existingVotes[playerId] = catId;
+            window.GameSync.updateState({
+                categoryVotes: existingVotes
+            });
+        }
     }
 
     function sendAnswer(optionIndex) {
         if (!playerId) return;
         if (!gameState || gameState.phase !== 'question') return;
+        if (localAnswer !== null) return;
         if (gameState.playerAnswers && gameState.playerAnswers[playerId] !== undefined) return;
-        var existingAnswers = Object.assign({}, (gameState && gameState.playerAnswers) || {});
-        existingAnswers[playerId] = optionIndex;
-        window.GameSync.updateState({
-            playerAnswers: existingAnswers
-        });
+        
+        setLocalAnswer(optionIndex);
+        if (window.GameSync && window.GameSync.patchAnswer) {
+            window.GameSync.patchAnswer(roomId, playerId, optionIndex);
+        } else {
+            var existingAnswers = Object.assign({}, (gameState && gameState.playerAnswers) || {});
+            existingAnswers[playerId] = optionIndex;
+            window.GameSync.updateState({
+                playerAnswers: existingAnswers
+            });
+        }
     }
 
     if (!isJoined || !gameState || !gameState.players || !gameState.players[playerId]) {
@@ -1541,8 +1603,12 @@ function MobileApp(props) {
         }
     }
 
-    var hasVoted = Boolean(categoryVotes[playerId]);
-    var hasAnswered = playerAnswers[playerId] !== undefined;
+    var effectiveVote = localVote !== null ? localVote : categoryVotes[playerId];
+    var hasVoted = Boolean(effectiveVote);
+
+    var effectiveAnswer = localAnswer !== null ? localAnswer : playerAnswers[playerId];
+    var hasAnswered = effectiveAnswer !== undefined && effectiveAnswer !== null;
+
     var currentQ = (currentQuestions || [])[currentQuestionIndex] || null;
 
     var myHead = isSafeImageSrc(myPlayer.selfie)
@@ -1558,7 +1624,7 @@ function MobileApp(props) {
         );
     } else if (phase === 'category_vote') {
         var voteButtons = (categoriesToVote || []).map(function(cat) {
-            var isChosen = categoryVotes[playerId] === cat.id;
+            var isChosen = effectiveVote === cat.id;
             var catBtnClasses = 'glass-card flex flex-col items-center justify-center text-center p-3 transition-all min-h-[90px] ' +
                 (isChosen ? '!bg-yellow-400 !text-black !border-black font-black ' : '') +
                 (hasVoted && !isChosen ? 'opacity-40 grayscale ' : '');
@@ -1581,7 +1647,7 @@ function MobileApp(props) {
     } else if (phase === 'question') {
         var answerLetters = ['A', 'B', 'C', 'D'];
         var answerButtons = answerLetters.map(function(lbl, i) {
-            var isSelected = playerAnswers[playerId] === i;
+            var isSelected = effectiveAnswer === i;
             var optionText = (currentQ && currentQ.options && currentQ.options[i]) ? currentQ.options[i] : ('Вариант ' + lbl);
             var btnClasses = 'quiz-btn quiz-btn-' + lbl.toLowerCase() + ' py-3 px-3 ' +
                 (isSelected ? 'quiz-btn-selected ' : '') +
