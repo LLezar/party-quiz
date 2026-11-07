@@ -68,7 +68,7 @@
 }
 
 /* ==========================================================================
-   RESET & БАЗА
+   RESET & БАЗА (С ФОЛЛБЭКАМИ ДЛЯ СТАРЫХ SAFARI И LG WEBOS)
    ========================================================================== */
 
 *, *::before, *::after {
@@ -81,7 +81,10 @@
 
 html, body {
   width: 100%;
+  height: 100vh;
   height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
   min-height: -webkit-fill-available;
   background-color: var(--bg-primary);
   color: var(--color-white);
@@ -96,9 +99,18 @@ html, body {
 #root {
   width: 100%;
   height: 100%;
+  min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+/* Явный полифилл inset-0 для старых браузеров (Safari iOS 12-14, webOS) */
+.inset-0 {
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -114,11 +126,12 @@ p, span, label {
 }
 
 /* ==========================================================================
-   ФОН И ГЛАВНЫЕ КОНТЕЙНЕРЫ (С УЧЕТОМ DVH И SAFE-AREA)
+   ФОН И ГЛАВНЫЕ КОНТЕЙНЕРЫ (С УЧЕТОМ VH / DVH И SAFE-AREA)
    ========================================================================== */
 
 .app-bg {
   width: 100vw;
+  height: 100vh;
   height: 100dvh;
   background: 
     radial-gradient(circle at 15% 15%, #ff9ff3 0%, transparent 35%),
@@ -135,7 +148,10 @@ p, span, label {
 .app-bg::before {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background-image: 
     radial-gradient(#ffffff 2px, transparent 2px);
   background-size: 32px 32px;
@@ -146,6 +162,7 @@ p, span, label {
 
 .tv-container {
   width: 100vw;
+  height: 100vh;
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -159,7 +176,9 @@ p, span, label {
 .mobile-container {
   width: 100%;
   max-width: 480px;
+  height: 100vh;
   height: 100dvh;
+  min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -386,6 +405,7 @@ p, span, label {
   width: 100%;
   height: 100%;
   max-width: 100vw;
+  max-height: 100vh;
   max-height: 100dvh;
   background-color: var(--board-bg);
   padding: 16px;
@@ -398,7 +418,10 @@ p, span, label {
 .board-grid::before {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background-image: repeating-linear-gradient(
     45deg,
     rgba(255, 255, 255, 0.05),
@@ -753,7 +776,10 @@ p, span, label {
 
 .camera-modal {
   position: fixed;
-  inset: 0;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
   background: rgba(15, 23, 42, 0.95);
   z-index: 999;
   display: flex;
@@ -844,7 +870,10 @@ input[type="text"]:focus {
 /* Всплывающее окно итогов раунда */
 .round-summary-modal {
   position: fixed;
-  inset: 0;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
   background: rgba(15, 23, 42, 0.88);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
