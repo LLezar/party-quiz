@@ -1,12 +1,12 @@
 // filename: sync.js
 window.GameSync = (function() {
-    let stateChangeCallback = null;
-    let currentRoomCode = null;
-    let databaseUrl = null;
-    let currentRole = null;
-    let bc = null; // BroadcastChannel для мгновенного обмена между вкладками одного устройства
-    let firebaseInterval = null;
-    let isPushing = false;
+    var stateChangeCallback = null;
+    var currentRoomCode = null;
+    var databaseUrl = null;
+    var currentRole = null;
+    var bc = null; // BroadcastChannel для мгновенного обмена между вкладками одного устройства
+    var firebaseInterval = null;
+    var isPushing = false;
 
     function safeGetStorage(key) {
         try {
@@ -38,13 +38,13 @@ window.GameSync = (function() {
 
     function sanitizeDbUrl(url) {
         if (!url || typeof url !== 'string') return null;
-        const trimmed = url.trim().replace(/\/+$/, '');
-        if (!trimmed.startsWith('https://')) return null;
-        if (!trimmed.includes('firebaseio.com') && !trimmed.includes('firebasedatabase.app')) return null;
+        var trimmed = url.trim().replace(/\/+$/, '');
+        if (trimmed.indexOf('https://') !== 0) return null;
+        if (trimmed.indexOf('firebaseio.com') === -1 && trimmed.indexOf('firebasedatabase.app') === -1) return null;
         return trimmed;
     }
 
-    let localState = {
+    var localState = {
         phase: 'lobby',
         players: {},
         categoriesToVote: [],
@@ -70,19 +70,21 @@ window.GameSync = (function() {
     }
 
     // Ключи, которые при передаче пустого объекта {} должны очищаться, а не мерджиться
-    const RESET_KEYS = ['playerAnswers', 'categoryVotes', 'roundMoves'];
+    var RESET_KEYS = ['playerAnswers', 'categoryVotes', 'roundMoves'];
 
     function mergeDeep(target, source) {
         if (!isObject(target) || !isObject(source)) return;
 
-        for (const key in source) {
-            if (RESET_KEYS.includes(key)) {
+        for (var key in source) {
+            if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+
+            if (RESET_KEYS.indexOf(key) !== -1) {
                 // Если пришел сброс (null, пустой объект или новый список)
-                target[key] = source[key] ? { ...source[key] } : {};
+                target[key] = source[key] ? Object.assign({}, source[key]) : {};
             } else if (source[key] === null) {
                 target[key] = null;
             } else if (Array.isArray(source[key])) {
-                target[key] = [...source[key]];
+                target[key] = source[key].slice();
             } else if (isObject(source[key])) {
                 if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
                     target[key] = {};
@@ -106,7 +108,7 @@ window.GameSync = (function() {
         
         mergeDeep(localState, remoteData);
 
-        RESET_KEYS.forEach(key => {
+        RESET_KEYS.forEach(function(key) {
             if (!(key in remoteData) || remoteData[key] === null) {
                 localState[key] = {};
             }
@@ -119,8 +121,8 @@ window.GameSync = (function() {
                 try { bc.close(); } catch (e) {}
             }
             bc = new BroadcastChannel('tv_game_sync_' + roomCode);
-            bc.onmessage = (event) => {
-                const incoming = typeof event.data === 'string' ? safeParse(event.data) : event.data;
+            bc.onmessage = function(event) {
+                var incoming = typeof event.data === 'string' ? safeParse(event.data) : event.data;
                 if (incoming) {
                     mergeState(incoming);
                     triggerCallback();
@@ -129,23 +131,26 @@ window.GameSync = (function() {
         }
     }
 
-    function getFirebaseUrl(roomCode, subPath = '') {
-        const safeRoom = encodeURIComponent(roomCode);
-        const pathPart = subPath ? `/${subPath}` : '';
-        return `${databaseUrl}/rooms/${safeRoom}${pathPart}.json`;
+    function getFirebaseUrl(roomCode, subPath) {
+        subPath = subPath || '';
+        var safeRoom = encodeURIComponent(roomCode);
+        var pathPart = subPath ? ('/' + subPath) : '';
+        return databaseUrl + '/rooms/' + safeRoom + pathPart + '.json';
     }
 
     function fetchStateFromFirebase(roomCode) {
         if (!databaseUrl || isPushing) return;
         fetch(getFirebaseUrl(roomCode))
-            .then(res => res.json())
-            .then(data => {
+            .then(function(res) {
+                return res.json();
+            })
+            .then(function(data) {
                 if (data && typeof data === 'object' && !isPushing) {
                     syncFromRemote(data);
                     triggerCallback();
                 }
             })
-            .catch(() => {});
+            .catch(function() {});
     }
 
     function pushStateToFirebase(roomCode, stateToPush) {
@@ -154,8 +159,8 @@ window.GameSync = (function() {
         // Подготавливаем payload для Firebase:
         // Если в RESET_KEYS передан пустой объект {}, заменяем его на null,
         // чтобы Firebase гарантированно удалил старые вложенные ключи
-        const firebasePayload = { ...stateToPush };
-        RESET_KEYS.forEach(key => {
+        var firebasePayload = Object.assign({}, stateToPush);
+        RESET_KEYS.forEach(function(key) {
             if (key in firebasePayload && isObject(firebasePayload[key]) && Object.keys(firebasePayload[key]).length === 0) {
                 firebasePayload[key] = null;
             }
@@ -169,8 +174,11 @@ window.GameSync = (function() {
             },
             body: JSON.stringify(firebasePayload)
         })
-        .catch(err => console.error("GameSync Firebase Push Error:", err))
-        .finally(() => {
+        .then(function(res) {
+            isPushing = false;
+            return res;
+        }, function(err) {
+            console.error("GameSync Firebase Push Error:", err);
             isPushing = false;
         });
     }
@@ -188,16 +196,16 @@ window.GameSync = (function() {
         }
 
         fetchStateFromFirebase(roomCode);
-        firebaseInterval = setInterval(() => {
+        firebaseInterval = setInterval(function() {
             fetchStateFromFirebase(roomCode);
         }, 1000);
     }
 
     return {
         init: function(arg1, arg2, arg3, arg4) {
-            let roomCode = '';
-            let dbUrl = '';
-            let callback = null;
+            var roomCode = '';
+            var dbUrl = '';
+            var callback = null;
 
             if (typeof arg1 === 'string' && (arg1 === 'host' || arg1 === 'player')) {
                 currentRole = arg1;
@@ -249,16 +257,15 @@ window.GameSync = (function() {
         },
 
         patchPlayer: function(roomCode, playerId, playerData) {
-            const playerUpdate = {
-                players: {
-                    [playerId]: playerData
-                }
+            var playerUpdate = {
+                players: {}
             };
+            playerUpdate.players[playerId] = playerData;
             return this.updateState(playerUpdate);
         },
 
         getPlayerId: function() {
-            let playerId = safeGetStorage('tv_game_player_id');
+            var playerId = safeGetStorage('tv_game_player_id');
             if (!playerId) {
                 playerId = 'player_' + Math.random().toString(36).substring(2, 9);
                 safeSetStorage('tv_game_player_id', playerId);
@@ -266,38 +273,53 @@ window.GameSync = (function() {
             return playerId;
         },
 
-        _getState: () => JSON.parse(JSON.stringify(localState))
+        _getState: function() {
+            return JSON.parse(JSON.stringify(localState));
+        }
     };
 })();
 
-// Захват четкого квадратного селфи высокого качества (256x256, JPEG 0.85)
-window.captureSelfie = async function(videoElement) {
-    if (!videoElement) return null;
+// Захват квадратного селфи высокого качества (256x256, JPEG 0.85) на нативных промисах без async/await
+window.captureSelfie = function(videoElement) {
+    return new Promise(function(resolve) {
+        if (!videoElement) {
+            resolve(null);
+            return;
+        }
 
-    const videoWidth = videoElement.videoWidth || 0;
-    const videoHeight = videoElement.videoHeight || 0;
+        var videoWidth = videoElement.videoWidth || 0;
+        var videoHeight = videoElement.videoHeight || 0;
 
-    if (videoWidth === 0 || videoHeight === 0) return null;
+        if (videoWidth === 0 || videoHeight === 0) {
+            resolve(null);
+            return;
+        }
 
-    const canvas = document.createElement('canvas');
-    const targetSize = 256;
-    canvas.width = targetSize;
-    canvas.height = targetSize;
-    const ctx = canvas.getContext('2d');
+        try {
+            var canvas = document.createElement('canvas');
+            var targetSize = 256;
+            canvas.width = targetSize;
+            canvas.height = targetSize;
+            var ctx = canvas.getContext('2d');
 
-    // Высокое качество интерполяции при отрисовке
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+            // Высокое качество интерполяции при отрисовке
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
 
-    const minDim = Math.min(videoWidth, videoHeight);
-    const startX = (videoWidth - minDim) / 2;
-    const startY = (videoHeight - minDim) / 2;
+            var minDim = Math.min(videoWidth, videoHeight);
+            var startX = (videoWidth - minDim) / 2;
+            var startY = (videoHeight - minDim) / 2;
 
-    ctx.drawImage(
-        videoElement,
-        startX, startY, minDim, minDim,
-        0, 0, targetSize, targetSize
-    );
+            ctx.drawImage(
+                videoElement,
+                startX, startY, minDim, minDim,
+                0, 0, targetSize, targetSize
+            );
 
-    return canvas.toDataURL('image/jpeg', 0.85);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+        } catch (e) {
+            console.error("captureSelfie error:", e);
+            resolve(null);
+        }
+    });
 };
