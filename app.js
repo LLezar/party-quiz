@@ -1,6 +1,20 @@
 // filename: app.js
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
+const safeGetItem = (key) => {
+    try {
+        return window.localStorage ? window.localStorage.getItem(key) : null;
+    } catch (e) {
+        return null;
+    }
+};
+
+const safeSetItem = (key, val) => {
+    try {
+        if (window.localStorage) window.localStorage.setItem(key, val);
+    } catch (e) {}
+};
+
 const TOTAL_CELLS = 25; // Индексы 0..24 в сетке 5x5
 const GRID_SIZE = 5;
 
@@ -223,11 +237,11 @@ const CameraModal = ({ isOpen, onClose, onSave }) => {
 };
 
 const StartScreen = () => {
-    const [dbUrl, setDbUrl] = useState(localStorage.getItem('firebaseDbUrl') || 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app');
+    const [dbUrl, setDbUrl] = useState(safeGetItem('firebaseDbUrl') || 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app');
     const [countdown, setCountdown] = useState(30);
 
     const handleHost = useCallback(() => {
-        localStorage.setItem('firebaseDbUrl', dbUrl);
+        safeSetItem('firebaseDbUrl', dbUrl);
         const room = generateRoomId();
         const baseUrl = window.location.origin + window.location.pathname;
         window.location.href = `${baseUrl}?role=host&room=${room}&db=${encodeURIComponent(dbUrl)}`;
@@ -248,7 +262,7 @@ const StartScreen = () => {
     }, [handleHost]);
 
     const handlePlayer = () => {
-        localStorage.setItem('firebaseDbUrl', dbUrl);
+        safeSetItem('firebaseDbUrl', dbUrl);
         const room = prompt('Введите 4-значный код комнаты:');
         if (room) {
             const baseUrl = window.location.origin + window.location.pathname;
@@ -297,7 +311,8 @@ const TVApp = ({ roomId, dbUrl }) => {
     const roundCorrectRef = useRef({});
     const currentQuestionsRef = useRef([]);
     const nextPhaseTimeoutRef = useRef(null);
-    const lobbyTimerRef = useRef(null);
+    const lobbyEndTimeRef = useRef(null);
+    const startNewRoundRef = useRef(null);
 
     const baseUrl = window.location.origin + window.location.pathname;
     const joinUrl = `${baseUrl}?role=player&room=${roomId}${dbUrl ? `&db=${encodeURIComponent(dbUrl)}` : ''}`;
@@ -364,6 +379,10 @@ const TVApp = ({ roomId, dbUrl }) => {
     }, [gameState?.playedCategories, gameState?.players, stopLobbyMusic]);
 
     useEffect(() => {
+        startNewRoundRef.current = startNewRound;
+    }, [startNewRound]);
+
+    useEffect(() => {
         try {
             window.GameSync.onStateChange((newState) => {
                 if (newState) setGameState(newState);
@@ -388,43 +407,43 @@ const TVApp = ({ roomId, dbUrl }) => {
         }
         return () => {
             if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
-            if (lobbyTimerRef.current) clearInterval(lobbyTimerRef.current);
         };
     }, [roomId, dbUrl]);
 
-    // Авто-таймер лобби на ТВ: 60 секунд
+    const hasPlayersInLobby = Object.keys(gameState?.players || {}).length >= 1;
+
+    // Авто-таймер лобби на ТВ: точный расчет по timestamp без зависания из-за ежесекундного пуллинга
     useEffect(() => {
-        const numPlayers = Object.keys(gameState?.players || {}).length;
-        if (gameState?.phase === 'lobby' && numPlayers >= 1) {
-            if (!lobbyTimerRef.current) {
-                setLobbyCountdown(60);
-                lobbyTimerRef.current = setInterval(() => {
-                    setLobbyCountdown(prev => {
-                        if (prev <= 1) {
-                            clearInterval(lobbyTimerRef.current);
-                            lobbyTimerRef.current = null;
-                            startNewRound();
-                            return 0;
-                        }
-                        return prev - 1;
-                    });
-                }, 1000);
+        let timerInterval = null;
+
+        if (gameState?.phase === 'lobby' && hasPlayersInLobby) {
+            if (!lobbyEndTimeRef.current) {
+                lobbyEndTimeRef.current = Date.now() + 60000;
             }
+
+            const tick = () => {
+                const remainingMs = lobbyEndTimeRef.current - Date.now();
+                const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
+                setLobbyCountdown(remainingSec);
+
+                if (remainingSec <= 0) {
+                    if (timerInterval) clearInterval(timerInterval);
+                    lobbyEndTimeRef.current = null;
+                    startNewRoundRef.current?.();
+                }
+            };
+
+            tick();
+            timerInterval = setInterval(tick, 250);
         } else {
-            if (lobbyTimerRef.current) {
-                clearInterval(lobbyTimerRef.current);
-                lobbyTimerRef.current = null;
-            }
+            lobbyEndTimeRef.current = null;
             setLobbyCountdown(60);
         }
 
         return () => {
-            if (lobbyTimerRef.current) {
-                clearInterval(lobbyTimerRef.current);
-                lobbyTimerRef.current = null;
-            }
+            if (timerInterval) clearInterval(timerInterval);
         };
-    }, [gameState?.phase, gameState?.players, startNewRound]);
+    }, [gameState?.phase, hasPlayersInLobby]);
 
     useEffect(() => {
         if (!gameState?.players || isAnimatingRoundMoves) return;
@@ -882,7 +901,7 @@ const TVApp = ({ roomId, dbUrl }) => {
 
 const MobileApp = ({ roomId, dbUrl }) => {
     const [gameState, setGameState] = useState(null);
-    const [playerId, setPlayerId] = useState(localStorage.getItem('tv_game_player_id') || localStorage.getItem('playerId') || null);
+    const [playerId, setPlayerId] = useState(safeGetItem('tv_game_player_id') || safeGetItem('playerId') || null);
     const [isJoined, setIsJoined] = useState(false);
     const [name, setName] = useState('');
     const [color, setColor] = useState(PLAYER_COLORS[0]);
@@ -1037,8 +1056,8 @@ const MobileApp = ({ roomId, dbUrl }) => {
 
         const newId = playerId || generatePlayerId();
         setPlayerId(newId);
-        localStorage.setItem('playerId', newId);
-        localStorage.setItem('tv_game_player_id', newId);
+        safeSetItem('playerId', newId);
+        safeSetItem('tv_game_player_id', newId);
 
         window.GameSync.updateState({
             players: {
