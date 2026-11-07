@@ -8,6 +8,25 @@ window.GameSync = (function() {
     let firebaseInterval = null;
     let isPushing = false;
 
+    function safeGetStorage(key) {
+        try {
+            return window.localStorage ? window.localStorage.getItem(key) : null;
+        } catch (e) {
+            console.warn("Storage read error:", e);
+            return null;
+        }
+    }
+
+    function safeSetStorage(key, value) {
+        try {
+            if (window.localStorage) {
+                window.localStorage.setItem(key, value);
+            }
+        } catch (e) {
+            console.warn("Storage write error:", e);
+        }
+    }
+
     function safeParse(str) {
         try {
             return JSON.parse(str);
@@ -239,10 +258,10 @@ window.GameSync = (function() {
         },
 
         getPlayerId: function() {
-            let playerId = localStorage.getItem('tv_game_player_id');
+            let playerId = safeGetStorage('tv_game_player_id');
             if (!playerId) {
                 playerId = 'player_' + Math.random().toString(36).substring(2, 9);
-                localStorage.setItem('tv_game_player_id', playerId);
+                safeSetStorage('tv_game_player_id', playerId);
             }
             return playerId;
         },
