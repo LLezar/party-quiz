@@ -1,3 +1,5 @@
+// filename: app.js
+// Весь код строго в стандарте ES5 для гарантии работы на webOS, старых планшетах и телефонах
 var h = React.createElement;
 var useState = React.useState;
 var useEffect = React.useEffect;
@@ -5,7 +7,6 @@ var useRef = React.useRef;
 var useCallback = React.useCallback;
 var useMemo = React.useMemo;
 
-// Безопасное хранилище LocalStorage с обработкой SecurityError в Safari Private Browsing
 var safeStorage = {
     getItem: function(key) {
         try {
@@ -23,8 +24,59 @@ var safeStorage = {
     }
 };
 
-var TOTAL_CELLS = 25; // Индексы 0..24 в сетке 5x5
+var TOTAL_CELLS = 25;
 var GRID_SIZE = 5;
+
+// Глобальный менеджер фоновой музыки start.mp3 с авто-разблокировкой
+var StartMusicManager = (function() {
+    var audio = null;
+    var isStarted = false;
+    var userInteracted = false;
+
+    function init() {
+        if (audio) return;
+        audio = new Audio('music/start.mp3');
+        audio.loop = true;
+    }
+
+    function play() {
+        init();
+        isStarted = true;
+        if (audio) {
+            var p = audio.play();
+            if (p !== undefined) {
+                p.catch(function() {});
+            }
+        }
+    }
+
+    function stop() {
+        isStarted = false;
+        if (audio) {
+            try {
+                audio.pause();
+                audio.currentTime = 0;
+            } catch (e) {}
+        }
+    }
+
+    function onUserGesture() {
+        userInteracted = true;
+        if (isStarted && audio && audio.paused) {
+            audio.play().catch(function() {});
+        }
+    }
+
+    if (typeof document !== 'undefined') {
+        document.addEventListener('click', onUserGesture, false);
+        document.addEventListener('touchstart', onUserGesture, false);
+    }
+
+    return {
+        play: play,
+        stop: stop
+    };
+})();
 
 function generateRoomId() {
     return Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -34,7 +86,6 @@ function generatePlayerId() {
     return 'p_' + Math.random().toString(36).substring(2, 9);
 }
 
-// Змейка 5x5 (0..24)
 function getGridPos(index) {
     var safeIndex = Math.max(0, Math.min(index, TOTAL_CELLS - 1));
     var row = Math.floor(safeIndex / GRID_SIZE);
@@ -70,41 +121,26 @@ function getSortedStandings(playersObj) {
     });
 }
 
-// Смещение фишек для поддержки до 10 игроков на одной клетке
 function getPawnOffset(indexInCell, totalInCell) {
     if (totalInCell <= 1) return { x: 0, y: 0, scale: 1 };
     if (totalInCell === 2) {
-        return { x: indexInCell === 0 ? -18 : 18, y: 0, scale: 0.85 };
+        return { x: indexInCell === 0 ? -16 : 16, y: 0, scale: 0.85 };
     }
     if (totalInCell === 3) {
-        var offsets3 = [
-            { x: -18, y: -10 },
-            { x: 18, y: -10 },
-            { x: 0, y: 14 }
-        ];
+        var offsets3 = [{ x: -16, y: -8 }, { x: 16, y: -8 }, { x: 0, y: 12 }];
         var item3 = offsets3[indexInCell] || { x: 0, y: 0 };
         return { x: item3.x, y: item3.y, scale: 0.8 };
     }
-    if (totalInCell === 4) {
-        var offsets4 = [
-            { x: -18, y: -14 },
-            { x: 18, y: -14 },
-            { x: -18, y: 14 },
-            { x: 18, y: 14 }
-        ];
-        var item4 = offsets4[indexInCell] || { x: 0, y: 0 };
-        return { x: item4.x, y: item4.y, scale: 0.75 };
-    }
-
     var angle = (indexInCell / totalInCell) * 2 * Math.PI;
-    var radius = 24;
+    var radius = 20;
     return {
         x: Math.round(Math.cos(angle) * radius),
         y: Math.round(Math.sin(angle) * radius),
-        scale: totalInCell > 6 ? 0.6 : 0.7
+        scale: totalInCell > 6 ? 0.6 : 0.72
     };
 }
 
+// Фигурка: внешний контейнер для координат, внутренний .pawn-inner для анимации прыжка
 function Pawn(props) {
     var color = props.color || '#FF3B30';
     var selfie = props.selfie;
@@ -128,10 +164,8 @@ function Pawn(props) {
         headContent = h('span', { className: 'text-3xl select-none' }, selfie || '👤');
     }
 
-    var wrapperClasses = 'pawn-wrapper ' + (isWalking ? 'pawn-walking ' : '') + 'relative w-full h-full pointer-events-none transition-all duration-300 flex flex-col items-center justify-center';
-
     return h('div', {
-        className: wrapperClasses,
+        className: 'pawn-wrapper',
         style: {
             gridRow: pos.row,
             gridColumn: pos.col,
@@ -141,20 +175,24 @@ function Pawn(props) {
         }
     },
         h('div', {
-            className: 'pawn-selfie-head',
-            style: {
-                backgroundColor: playerColor,
-                borderColor: playerColor,
-                '--player-color': playerColor
-            }
-        }, headContent),
-        h('div', {
-            className: 'pawn-body',
-            style: {
-                backgroundColor: playerColor,
-                '--player-color': playerColor
-            }
-        })
+            className: 'pawn-inner ' + (isWalking ? 'pawn-walking' : '')
+        },
+            h('div', {
+                className: 'pawn-selfie-head',
+                style: {
+                    backgroundColor: playerColor,
+                    borderColor: playerColor,
+                    '--player-color': playerColor
+                }
+            }, headContent),
+            h('div', {
+                className: 'pawn-body',
+                style: {
+                    backgroundColor: playerColor,
+                    '--player-color': playerColor
+                }
+            })
+        )
     );
 }
 
@@ -184,7 +222,7 @@ function CameraModal(props) {
             setIsVideoReady(false);
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                 navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
+                    video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } }
                 }).then(function(s) {
                     if (isCancelled) {
                         s.getTracks().forEach(function(track) { track.stop(); });
@@ -194,13 +232,12 @@ function CameraModal(props) {
                     if (videoRef.current) {
                         videoRef.current.srcObject = s;
                     }
-                }).catch(function(err) {
-                    console.error("Camera access error:", err);
-                    alert("Ошибка доступа к камере. Пожалуйста, выберите эмодзи.");
+                }).catch(function() {
+                    alert("Камера недоступна. Выберите эмодзи.");
                     if (onCloseRef.current) onCloseRef.current();
                 });
             } else {
-                alert("Камера не поддерживается вашим браузером. Выберите эмодзи.");
+                alert("Камера не поддерживается. Выберите эмодзи.");
                 if (onCloseRef.current) onCloseRef.current();
             }
         }
@@ -217,42 +254,17 @@ function CameraModal(props) {
 
     function handleTake() {
         var videoEl = videoRef.current;
-        if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) {
-            return;
-        }
-        try {
-            if (window.captureSelfie) {
-                window.captureSelfie(videoEl).then(function(base64) {
-                    setPhoto(base64);
-                }).catch(function(e) {
-                    console.error(e);
-                    alert("Не удалось сделать снимок");
-                });
-            } else {
-                var canvas = document.createElement('canvas');
-                canvas.width = 256;
-                canvas.height = 256;
-                var ctx = canvas.getContext('2d');
-                var minDim = Math.min(videoEl.videoWidth, videoEl.videoHeight);
-                var startX = (videoEl.videoWidth - minDim) / 2;
-                var startY = (videoEl.videoHeight - minDim) / 2;
-                ctx.drawImage(videoEl, startX, startY, minDim, minDim, 0, 0, 256, 256);
-                setPhoto(canvas.toDataURL('image/jpeg', 0.85));
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Не удалось сделать снимок");
+        if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) return;
+
+        if (window.captureSelfie) {
+            window.captureSelfie(videoEl).then(function(base64) {
+                setPhoto(base64);
+            });
         }
     }
 
-    function handleRetake() {
-        setPhoto(null);
-    }
-
-    function handleSave() {
-        onSave(photo);
-        onClose();
-    }
+    function handleRetake() { setPhoto(null); }
+    function handleSave() { onSave(photo); onClose(); }
 
     var previewElement;
     if (!photo) {
@@ -262,7 +274,6 @@ function CameraModal(props) {
             playsInline: true,
             muted: true,
             onLoadedData: function() { setIsVideoReady(true); },
-            onCanPlay: function() { setIsVideoReady(true); },
             className: 'w-full h-full object-cover'
         });
     } else {
@@ -273,37 +284,24 @@ function CameraModal(props) {
         });
     }
 
-    var controlsElement;
-    if (!photo) {
-        controlsElement = h('button', {
-            onClick: handleTake,
-            disabled: !isVideoReady,
-            className: 'primary-btn w-full ' + (!isVideoReady ? 'opacity-50 cursor-wait' : '')
-        }, isVideoReady ? '📸 Сфотографировать' : 'Запуск камеры...');
-    } else {
-        controlsElement = h('div', { className: 'flex gap-3 w-full' },
-            h('button', {
-                onClick: handleRetake,
-                className: 'primary-btn w-1/2 !bg-gray-500 hover:!bg-gray-600'
-            }, 'Переснять'),
-            h('button', {
-                onClick: handleSave,
-                className: 'primary-btn w-1/2'
-            }, 'Сохранить')
-        );
-    }
-
-    return h('div', { className: 'camera-modal fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4' },
-        h('div', { className: 'glass-card p-5 flex flex-col items-center max-w-sm w-full relative' },
+    return h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4' },
+        h('div', { className: 'glass-card p-5 flex flex-col items-center max-w-xs w-full relative' },
             h('button', {
                 onClick: onClose,
-                className: 'absolute top-3 right-4 text-white text-3xl font-bold'
+                className: 'absolute top-2 right-3 text-white text-3xl font-bold'
             }, '\u00D7'),
-            h('h3', { className: 'text-xl font-bold mb-4 text-white' }, 'Сделайте селфи'),
-            h('div', { className: 'camera-video-preview w-60 h-60 bg-black rounded-3xl overflow-hidden mb-5 border-4 border-yellow-400 relative flex items-center justify-center' },
+            h('h3', { className: 'text-xl font-bold mb-3 text-white' }, 'Селфи'),
+            h('div', { className: 'w-48 h-48 bg-black rounded-full overflow-hidden mb-4 border-4 border-yellow-400 flex items-center justify-center' },
                 previewElement
             ),
-            h('div', { className: 'camera-controls flex gap-3 w-full' }, controlsElement)
+            !photo ? h('button', {
+                onClick: handleTake,
+                disabled: !isVideoReady,
+                className: 'primary-btn w-full !py-2 text-base'
+            }, isVideoReady ? '📸 Снять' : 'Запуск...') : h('div', { className: 'flex gap-2 w-full' },
+                h('button', { onClick: handleRetake, className: 'primary-btn w-1/2 !bg-gray-600 !py-2 text-sm' }, 'Переснять'),
+                h('button', { onClick: handleSave, className: 'primary-btn w-1/2 !py-2 text-sm' }, 'Готово')
+            )
         )
     );
 }
@@ -318,6 +316,13 @@ function StartScreen() {
     var countdownState = useState(30);
     var countdown = countdownState[0];
     var setCountdown = countdownState[1];
+
+    useEffect(function() {
+        StartMusicManager.play();
+        return function() {
+            // Музыка продолжает играть, если переходим в лобби
+        };
+    }, []);
 
     var handleHost = useCallback(function() {
         safeStorage.setItem('firebaseDbUrl', dbUrl);
@@ -341,6 +346,7 @@ function StartScreen() {
     }, [handleHost]);
 
     function handlePlayer() {
+        StartMusicManager.stop();
         safeStorage.setItem('firebaseDbUrl', dbUrl);
         var room = prompt('Введите 4-значный код комнаты:');
         if (room) {
@@ -350,29 +356,28 @@ function StartScreen() {
     }
 
     return h('div', { className: 'flex flex-col items-center justify-center h-full p-4 tv-container' },
-        h('div', { className: 'glass-card p-8 max-w-md w-full text-center space-y-6' },
-            h('h1', { className: 'text-5xl font-black mb-4 text-yellow-300 drop-shadow-md' }, 'Пати Квиз'),
-            h('div', { className: 'auto-timer-badge text-sm font-bold text-yellow-300 bg-black/40 border-2 border-black px-4 py-2 rounded-full inline-block' },
-                'Автоматическое создание комнаты через: ' + countdown + ' сек...'
+        h('div', { className: 'glass-card p-6 md:p-8 max-w-md w-full text-center space-y-5' },
+            h('h1', { className: 'text-4xl md:text-5xl font-black mb-2 text-yellow-300' }, 'Пати Квиз'),
+            h('div', { className: 'text-xs font-bold text-yellow-300 bg-black/40 border-2 border-black px-3 py-1.5 rounded-full inline-block' },
+                'Авто-создание ТВ через: ' + countdown + ' сек...'
             ),
             h('div', { className: 'text-left' },
-                h('label', { className: 'block text-sm mb-2 text-white font-bold' }, 'Firebase Realtime DB URL:'),
+                h('label', { className: 'block text-xs mb-1 text-white font-bold' }, 'Firebase DB URL:'),
                 h('input', {
                     type: 'text',
                     value: dbUrl,
                     onChange: function(e) { setDbUrl(e.target.value); },
-                    placeholder: 'https://your-project.firebaseio.com',
-                    className: 'w-full p-3 rounded-xl bg-white border-2 border-black text-black font-bold outline-none'
+                    className: 'w-full p-2.5 rounded-xl bg-white border-2 border-black text-black font-bold outline-none text-sm'
                 })
             ),
-            h('div', { className: 'space-y-4 pt-4' },
+            h('div', { className: 'space-y-3 pt-2' },
                 h('button', {
                     onClick: handleHost,
-                    className: 'primary-btn w-full py-4 text-xl shadow-lg'
+                    className: 'primary-btn w-full py-3.5 text-lg'
                 }, 'Экран ТВ (Хост)'),
                 h('button', {
                     onClick: handlePlayer,
-                    className: 'w-full py-4 rounded-xl text-xl font-bold bg-white/20 hover:bg-white/30 border-2 border-black transition-colors'
+                    className: 'w-full py-3 rounded-xl text-lg font-bold bg-white/20 hover:bg-white/30 border-2 border-black transition-colors'
                 }, 'Телефон (Игрок)')
             )
         )
@@ -408,82 +413,79 @@ function TVApp(props) {
     var setLobbyCountdown = lobbyCountdownState[1];
 
     var qrRef = useRef(null);
-    var lobbyAudioRef = useRef(null);
-
-    // Флаг предотвращения повторных переходов и зацикливаний фаз
     var phaseLockRef = useRef(false);
-
     var roundCorrectRef = useRef({});
     var currentQuestionsRef = useRef([]);
     var nextPhaseTimeoutRef = useRef(null);
     var lobbyEndTimeRef = useRef(null);
     var startNewRoundRef = useRef(null);
 
+    // Независимый расчет локального таймера для предотвращения Clock Skew
+    var phaseStartLocalRef = useRef(Date.now());
+    var lastTimerKeyRef = useRef('');
+
     var baseUrl = window.location.origin + window.location.pathname;
     var joinUrl = baseUrl + '?role=player&room=' + roomId + (dbUrl ? ('&db=' + encodeURIComponent(dbUrl)) : '');
 
-    var stopLobbyMusic = useCallback(function() {
-        if (lobbyAudioRef.current) {
-            try {
-                lobbyAudioRef.current.pause();
-                lobbyAudioRef.current.currentTime = 0;
-            } catch (e) {
-                console.log("Audio stop error", e);
-            }
-        }
-    }, []);
-
     useEffect(function() {
-        var audio = new Audio('music/start.mp3');
-        audio.loop = true;
-        lobbyAudioRef.current = audio;
-
-        var playPromise = audio.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(function(err) {
-                console.log("start.mp3 autoplay policy waiting for user interaction or file not found:", err);
-            });
-        }
-
+        StartMusicManager.play();
         return function() {
-            if (lobbyAudioRef.current) {
-                lobbyAudioRef.current.pause();
-                lobbyAudioRef.current.currentTime = 0;
-                lobbyAudioRef.current = null;
-            }
+            StartMusicManager.stop();
         };
     }, []);
 
-    // Сброс блокировки переходов при реальной смене фазы или вопроса
     useEffect(function() {
         phaseLockRef.current = false;
-    }, [gameState && gameState.phase, gameState && gameState.currentQuestionIndex]);
+    }, [gameState && gameState.phase, gameState && gameState.timerKey]);
+
+    // Локальный расчет оставшегося времени без задержек сети
+    useEffect(function() {
+        if (!gameState) return;
+
+        if (gameState.timerKey !== lastTimerKeyRef.current) {
+            lastTimerKeyRef.current = gameState.timerKey || '';
+            phaseStartLocalRef.current = Date.now();
+        }
+
+        var duration = gameState.timerDuration || 0;
+        if (duration <= 0) {
+            setTimeLeft(0);
+            return;
+        }
+
+        var tick = function() {
+            var elapsed = (Date.now() - phaseStartLocalRef.current) / 1000;
+            var remaining = Math.max(0, Math.ceil(duration - elapsed));
+            setTimeLeft(remaining);
+        };
+
+        tick();
+        var timer = setInterval(tick, 200);
+        return function() { clearInterval(timer); };
+    }, [gameState && gameState.timerKey, gameState && gameState.timerDuration]);
 
     var startNewRound = useCallback(function() {
-        stopLobbyMusic();
+        StartMusicManager.stop();
         if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
 
         var currentPlayed = [];
         var syncState = window.GameSync ? window.GameSync._getState() : null;
         if (syncState && syncState.playedCategories) {
             currentPlayed = syncState.playedCategories;
-        } else if (gameState && gameState.playedCategories) {
-            currentPlayed = gameState.playedCategories;
         }
 
         var allCategories = (window.QuestionBank && window.QuestionBank.categories) ? window.QuestionBank.categories : [];
         var availableCategories = allCategories.filter(function(c) {
             return currentPlayed.indexOf(c.id) === -1;
         });
-        if (availableCategories.length < 6) {
-            availableCategories = allCategories;
-        }
+        if (availableCategories.length < 6) availableCategories = allCategories;
+
         var categories = availableCategories.slice().sort(function() {
             return 0.5 - Math.random();
         }).slice(0, 6);
 
         roundCorrectRef.current = {};
-        var players = (gameState && gameState.players) ? gameState.players : {};
+        var players = (syncState && syncState.players) ? syncState.players : {};
         for (var pid in players) {
             if (Object.prototype.hasOwnProperty.call(players, pid)) {
                 roundCorrectRef.current[pid] = 0;
@@ -492,15 +494,17 @@ function TVApp(props) {
 
         window.GameSync.updateState({
             phase: 'category_vote',
-            timerEndTime: Date.now() + 10000,
+            timerDuration: 10,
+            timerKey: 'vote_' + Date.now(),
             categoriesToVote: categories,
             categoryVotes: {},
             playerAnswers: {},
             currentQuestionIndex: 0,
             currentQuestions: [],
+            activeQuestion: null,
             roundMoves: {}
         });
-    }, [gameState && gameState.playedCategories, gameState && gameState.players, stopLobbyMusic]);
+    }, []);
 
     useEffect(function() {
         startNewRoundRef.current = startNewRound;
@@ -515,7 +519,8 @@ function TVApp(props) {
 
             window.GameSync.updateState({
                 phase: 'lobby',
-                timerEndTime: 0,
+                timerDuration: 0,
+                timerKey: '',
                 categoriesToVote: [],
                 playedCategories: [],
                 categoryVotes: {},
@@ -523,12 +528,12 @@ function TVApp(props) {
                 currentRound: 0,
                 currentQuestionIndex: 0,
                 currentQuestions: [],
+                activeQuestion: null,
                 players: {},
                 roundMoves: {}
             });
-        } catch (err) {
-            console.error("Init host sync error", err);
-        }
+        } catch (err) {}
+
         return function() {
             if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
         };
@@ -536,36 +541,27 @@ function TVApp(props) {
 
     var hasPlayersInLobby = Object.keys((gameState && gameState.players) || {}).length >= 1;
 
-    // Авто-таймер лобби на ТВ без сброса таймера при пуллинге Firebase
     useEffect(function() {
         var timerInterval = null;
-
         if (gameState && gameState.phase === 'lobby' && hasPlayersInLobby) {
             if (!lobbyEndTimeRef.current) {
                 lobbyEndTimeRef.current = Date.now() + 60000;
             }
-
             var tick = function() {
-                var remainingMs = lobbyEndTimeRef.current - Date.now();
-                var remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
+                var remainingSec = Math.max(0, Math.ceil((lobbyEndTimeRef.current - Date.now()) / 1000));
                 setLobbyCountdown(remainingSec);
-
                 if (remainingSec <= 0) {
                     if (timerInterval) clearInterval(timerInterval);
                     lobbyEndTimeRef.current = null;
-                    if (startNewRoundRef.current) {
-                        startNewRoundRef.current();
-                    }
+                    if (startNewRoundRef.current) startNewRoundRef.current();
                 }
             };
-
             tick();
             timerInterval = setInterval(tick, 250);
         } else {
             lobbyEndTimeRef.current = null;
             setLobbyCountdown(60);
         }
-
         return function() {
             if (timerInterval) clearInterval(timerInterval);
         };
@@ -582,13 +578,12 @@ function TVApp(props) {
         setVisualPositions(positions);
     }, [gameState && gameState.players, isAnimatingRoundMoves]);
 
-    // Адаптивная генерация QR-кода под iPad и ТВ экраны
     useEffect(function() {
         if (gameState && gameState.phase === 'lobby' && qrRef.current) {
             qrRef.current.innerHTML = '';
             try {
-                var minDimension = Math.min(window.innerWidth || 800, window.innerHeight || 600);
-                var qrSize = Math.min(220, Math.max(140, Math.floor(minDimension * 0.25)));
+                var minDim = Math.min(window.innerWidth || 800, window.innerHeight || 600);
+                var qrSize = Math.min(220, Math.max(140, Math.floor(minDim * 0.25)));
                 new QRCode(qrRef.current, {
                     text: joinUrl,
                     width: qrSize,
@@ -597,33 +592,16 @@ function TVApp(props) {
                     colorLight : "#ffffff",
                     correctLevel : QRCode.CorrectLevel.M
                 });
-            } catch(e) {
-                console.error("QR Code Error:", e);
-            }
+            } catch(e) {}
         }
     }, [gameState && gameState.phase, joinUrl]);
 
-    useEffect(function() {
-        var timerInterval = null;
-        var syncTime = function() {
-            if (gameState && gameState.timerEndTime && gameState.timerEndTime > 0) {
-                var diff = gameState.timerEndTime - Date.now();
-                setTimeLeft(Math.max(0, Math.ceil(diff / 1000)));
-            } else {
-                setTimeLeft(0);
-            }
-        };
-
-        syncTime();
-        timerInterval = setInterval(syncTime, 250);
-        return function() { clearInterval(timerInterval); };
-    }, [gameState && gameState.timerEndTime, gameState && gameState.phase, gameState && gameState.currentQuestionIndex]);
-
     var handleVoteFinished = useCallback(function() {
-        if (!gameState || phaseLockRef.current) return;
+        if (phaseLockRef.current) return;
         phaseLockRef.current = true;
 
-        var votes = gameState.categoryVotes || {};
+        var syncState = window.GameSync ? window.GameSync._getState() : {};
+        var votes = syncState.categoryVotes || {};
         var voteCounts = {};
         for (var vKey in votes) {
             if (Object.prototype.hasOwnProperty.call(votes, vKey)) {
@@ -633,150 +611,138 @@ function TVApp(props) {
         }
 
         var chosenCat = 'cinema';
-        if (gameState.categoriesToVote && gameState.categoriesToVote.length > 0 && gameState.categoriesToVote[0]) {
-            chosenCat = gameState.categoriesToVote[0].id || 'cinema';
+        if (syncState.categoriesToVote && syncState.categoriesToVote.length > 0) {
+            chosenCat = syncState.categoriesToVote[0].id || 'cinema';
         }
         var maxCount = -1;
         for (var cId in voteCounts) {
             if (Object.prototype.hasOwnProperty.call(voteCounts, cId)) {
-                var cnt = voteCounts[cId];
-                if (cnt > maxCount) {
-                    maxCount = cnt;
+                if (voteCounts[cId] > maxCount) {
+                    maxCount = voteCounts[cId];
                     chosenCat = cId;
                 }
             }
         }
 
-        var questions = [];
-        if (window.QuestionBank && window.QuestionBank.getQuestions) {
-            questions = window.QuestionBank.getQuestions(chosenCat, 4);
-        } else if (window.QuestionBank && window.QuestionBank.getQuestionsByCategory) {
-            questions = window.QuestionBank.getQuestionsByCategory(chosenCat, 4);
-        }
-
+        var questions = window.QuestionBank.getQuestions(chosenCat, 4);
         currentQuestionsRef.current = questions;
 
-        var prevPlayed = (gameState.playedCategories || []).slice();
+        var prevPlayed = (syncState.playedCategories || []).slice();
         if (prevPlayed.indexOf(chosenCat) === -1) {
             prevPlayed.push(chosenCat);
         }
 
         window.GameSync.updateState({
             phase: 'question',
-            timerEndTime: Date.now() + 15000,
+            timerDuration: 15,
+            timerKey: 'q_0_' + Date.now(),
             playedCategories: prevPlayed,
             categoryVotes: {},
             playerAnswers: {},
             currentQuestionIndex: 0,
-            currentQuestions: questions
+            currentQuestions: questions,
+            activeQuestion: questions[0]
         });
-    }, [gameState]);
+    }, []);
 
     function executeRoundMovement() {
         setIsAnimatingRoundMoves(true);
 
-        window.GameSync.updateState({
-            phase: 'board_move',
-            timerEndTime: 0,
-            playerAnswers: {}
-        }).then(function() {
-            var playersCopy = JSON.parse(JSON.stringify((gameState && gameState.players) || {}));
-            var initialPositions = {};
-            var playerIds = Object.keys(playersCopy);
-            playerIds.forEach(function(pid) {
-                initialPositions[pid] = playersCopy[pid].position || 0;
+        window.GameSync.fetchRoomCheers(roomId, function(cheersMap) {
+            window.GameSync.updateState({
+                phase: 'board_move',
+                timerDuration: 0,
+                timerKey: '',
+                playerAnswers: {}
+            }).then(function() {
+                var syncState = window.GameSync._getState();
+                var playersCopy = JSON.parse(JSON.stringify(syncState.players || {}));
+                var initialPositions = {};
+                var playerIds = Object.keys(playersCopy);
+                playerIds.forEach(function(pid) {
+                    initialPositions[pid] = playersCopy[pid].position || 0;
+                });
+
+                function animatePlayerSteps(playerIndex) {
+                    if (playerIndex >= playerIds.length) {
+                        var sorted = getSortedStandings(playersCopy);
+                        var roundMoves = {};
+                        sorted.forEach(function(p, index) {
+                            roundMoves[p.id] = {
+                                rank: index + 1,
+                                stepsGained: roundCorrectRef.current[p.id] || 0,
+                                previousPos: initialPositions[p.id] || 0,
+                                currentPos: p.position || 0
+                            };
+                        });
+
+                        setIsAnimatingRoundMoves(false);
+
+                        return window.GameSync.updateState({
+                            phase: 'round_summary',
+                            timerDuration: 6,
+                            timerKey: 'sum_' + Date.now(),
+                            roundMoves: roundMoves,
+                            players: playersCopy
+                        });
+                    }
+
+                    var pid = playerIds[playerIndex];
+                    var steps = roundCorrectRef.current[pid] || 0;
+                    var currentPos = playersCopy[pid].position || 0;
+
+                    var cheerData = (cheersMap && cheersMap[pid]) || (playersCopy[pid] && playersCopy[pid].cheerAudio);
+                    if (steps > 0 && cheerData) {
+                        try {
+                            var cheer = new Audio(cheerData);
+                            cheer.play().catch(function() {});
+                        } catch (err) {}
+                    }
+
+                    function stepOneByOne(s) {
+                        if (s >= steps || currentPos >= TOTAL_CELLS - 1) {
+                            playersCopy[pid].position = currentPos;
+                            playersCopy[pid].score = (playersCopy[pid].score || 0) + steps;
+                            return animatePlayerSteps(playerIndex + 1);
+                        }
+
+                        setWalkingPlayerId(pid);
+                        currentPos += 1;
+                        setVisualPositions(function(prev) {
+                            var nextPos = Object.assign({}, prev);
+                            nextPos[pid] = currentPos;
+                            return nextPos;
+                        });
+
+                        return new Promise(function(res) { setTimeout(res, 500); })
+                            .then(function() {
+                                setWalkingPlayerId(null);
+                                return new Promise(function(res) { setTimeout(res, 150); });
+                            })
+                            .then(function() {
+                                return stepOneByOne(s + 1);
+                            });
+                    }
+
+                    return stepOneByOne(0);
+                }
+
+                return animatePlayerSteps(0);
             });
-
-            function animatePlayerSteps(playerIndex) {
-                if (playerIndex >= playerIds.length) {
-                    var sorted = getSortedStandings(playersCopy);
-                    var roundMoves = {};
-                    sorted.forEach(function(p, index) {
-                        roundMoves[p.id] = {
-                            rank: index + 1,
-                            stepsGained: roundCorrectRef.current[p.id] || 0,
-                            previousPos: initialPositions[p.id] || 0,
-                            currentPos: p.position || 0
-                        };
-                    });
-
-                    setIsAnimatingRoundMoves(false);
-
-                    return window.GameSync.updateState({
-                        phase: 'round_summary',
-                        timerEndTime: Date.now() + 6000,
-                        roundMoves: roundMoves,
-                        players: playersCopy
-                    });
-                }
-
-                var pid = playerIds[playerIndex];
-                var steps = roundCorrectRef.current[pid] || 0;
-                var currentPos = playersCopy[pid].position || 0;
-
-                if (steps > 0 && playersCopy[pid].cheerAudio) {
-                    try {
-                        var cheer = new Audio(playersCopy[pid].cheerAudio);
-                        cheer.play().catch(function(e) {
-                            console.log("Cheer audio playback prevented or failed:", e);
-                        });
-                    } catch (err) {
-                        console.log("Cheer audio play error:", err);
-                    }
-                }
-
-                function stepOneByOne(s) {
-                    if (s >= steps || currentPos >= TOTAL_CELLS - 1) {
-                        playersCopy[pid].position = currentPos;
-                        playersCopy[pid].score = (playersCopy[pid].score || 0) + steps;
-                        return animatePlayerSteps(playerIndex + 1);
-                    }
-
-                    setWalkingPlayerId(pid);
-                    currentPos += 1;
-                    setVisualPositions(function(prev) {
-                        var nextPos = Object.assign({}, prev);
-                        nextPos[pid] = currentPos;
-                        return nextPos;
-                    });
-
-                    return new Promise(function(res) { setTimeout(res, 500); })
-                        .then(function() {
-                            setWalkingPlayerId(null);
-                            return new Promise(function(res) { setTimeout(res, 150); });
-                        })
-                        .then(function() {
-                            return stepOneByOne(s + 1);
-                        });
-                }
-
-                return stepOneByOne(0);
-            }
-
-            return animatePlayerSteps(0);
-        }).catch(function(err) {
-            console.error("Movement animation error:", err);
-            setIsAnimatingRoundMoves(false);
         });
     }
 
     var handleShowResultPhase = useCallback(function() {
-        if (!gameState || phaseLockRef.current) return;
+        if (phaseLockRef.current) return;
         phaseLockRef.current = true;
 
-        var currentQIndex = gameState.currentQuestionIndex || 0;
-        var questionsList = currentQuestionsRef.current.length ? currentQuestionsRef.current : (gameState.currentQuestions || []);
+        var syncState = window.GameSync ? window.GameSync._getState() : {};
+        var currentQIndex = syncState.currentQuestionIndex || 0;
+        var questionsList = currentQuestionsRef.current.length ? currentQuestionsRef.current : (syncState.currentQuestions || []);
         var currentQ = questionsList[currentQIndex];
-        var correctIndex = 0;
-        if (currentQ) {
-            if (currentQ.correctIndex !== undefined && currentQ.correctIndex !== null) {
-                correctIndex = currentQ.correctIndex;
-            } else if (currentQ.correct !== undefined && currentQ.correct !== null) {
-                correctIndex = currentQ.correct;
-            }
-        }
+        var correctIndex = currentQ ? (currentQ.correctIndex !== undefined ? currentQ.correctIndex : currentQ.correct) : 0;
 
-        var playerAnswers = gameState.playerAnswers || {};
+        var playerAnswers = syncState.playerAnswers || {};
         for (var pid in playerAnswers) {
             if (Object.prototype.hasOwnProperty.call(playerAnswers, pid)) {
                 if (playerAnswers[pid] === correctIndex) {
@@ -787,7 +753,8 @@ function TVApp(props) {
 
         window.GameSync.updateState({
             phase: 'answer_reveal',
-            timerEndTime: 0
+            timerDuration: 0,
+            timerKey: ''
         });
 
         if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
@@ -796,65 +763,64 @@ function TVApp(props) {
             if (nextQIndex < 4) {
                 window.GameSync.updateState({
                     phase: 'question',
-                    timerEndTime: Date.now() + 15000,
+                    timerDuration: 15,
+                    timerKey: 'q_' + nextQIndex + '_' + Date.now(),
                     currentQuestionIndex: nextQIndex,
+                    activeQuestion: questionsList[nextQIndex],
                     playerAnswers: {}
                 });
             } else {
                 executeRoundMovement();
             }
         }, 5000);
-    }, [gameState]);
+    }, []);
 
+    // Проверка завершения фаз по таймеру и ответам всех игроков
     useEffect(function() {
         if (!gameState) return;
         var phase = gameState.phase;
-        var timerEndTime = gameState.timerEndTime;
         var players = gameState.players || {};
         var categoryVotes = gameState.categoryVotes || {};
         var playerAnswers = gameState.playerAnswers || {};
-        var isTimeUp = timerEndTime > 0 && Date.now() >= timerEndTime;
+        var isTimeUp = (gameState.timerDuration > 0 && timeLeft <= 0);
 
         if (phase === 'category_vote') {
             var numPlayers = Object.keys(players).length;
             var numVotes = Object.keys(categoryVotes).length;
             if (isTimeUp || (numPlayers > 0 && numVotes >= numPlayers)) {
-                if (!phaseLockRef.current) {
-                    handleVoteFinished();
-                }
+                if (!phaseLockRef.current) handleVoteFinished();
             }
         } else if (phase === 'question') {
             var numPlayersQ = Object.keys(players).length;
             var numAnswersQ = Object.keys(playerAnswers).length;
             if (isTimeUp || (numPlayersQ > 0 && numAnswersQ >= numPlayersQ)) {
-                if (!phaseLockRef.current) {
-                    handleShowResultPhase();
-                }
+                if (!phaseLockRef.current) handleShowResultPhase();
             }
         } else if (phase === 'round_summary') {
             if (isTimeUp) {
                 if (!phaseLockRef.current) {
                     phaseLockRef.current = true;
                     var winner = null;
-                    var pList = players ? Object.values(players) : [];
-                    for (var i = 0; i < pList.length; i++) {
-                        if ((pList[i].position || 0) >= TOTAL_CELLS - 1) {
-                            winner = pList[i];
-                            break;
+                    for (var pid in players) {
+                        if (Object.prototype.hasOwnProperty.call(players, pid)) {
+                            if ((players[pid].position || 0) >= TOTAL_CELLS - 1) {
+                                winner = players[pid];
+                                break;
+                            }
                         }
                     }
                     if (winner) {
-                        window.GameSync.updateState({ phase: 'finish', winnerId: winner.id });
+                        window.GameSync.updateState({ phase: 'finish', winnerId: winner.id, timerDuration: 0 });
                     } else {
                         startNewRound();
                     }
                 }
             }
         }
-    }, [gameState, handleVoteFinished, handleShowResultPhase, startNewRound]);
+    }, [gameState, timeLeft, handleVoteFinished, handleShowResultPhase, startNewRound]);
 
     if (!gameState) {
-        return h('div', { className: 'flex items-center justify-center h-full text-3xl font-black' }, 'Загрузка игры...');
+        return h('div', { className: 'flex items-center justify-center h-full text-3xl font-black' }, 'Загрузка...');
     }
 
     var phase = gameState.phase;
@@ -874,31 +840,16 @@ function TVApp(props) {
     }
 
     var questionsList = currentQuestionsRef.current.length ? currentQuestionsRef.current : (gameState.currentQuestions || []);
-    var currentQ = questionsList[currentQuestionIndex] || null;
-    var currentQCorrectIndex = 0;
-    if (currentQ) {
-        if (currentQ.correctIndex !== undefined && currentQ.correctIndex !== null) {
-            currentQCorrectIndex = currentQ.correctIndex;
-        } else if (currentQ.correct !== undefined && currentQ.correct !== null) {
-            currentQCorrectIndex = currentQ.correct;
-        }
-    }
+    var currentQ = gameState.activeQuestion || questionsList[currentQuestionIndex] || null;
+    var currentQCorrectIndex = currentQ ? (currentQ.correctIndex !== undefined ? currentQ.correctIndex : currentQ.correct) : 0;
 
-    // Группировка игроков по клеткам
     var cellOccupantsMap = {};
     playersList.forEach(function(p) {
-        var cellPos = visualPositions[p.id] !== undefined ? visualPositions[p.id] : (p.position !== undefined ? p.position : 0);
+        var cellPos = visualPositions[p.id] !== undefined ? visualPositions[p.id] : (p.position || 0);
         if (!cellOccupantsMap[cellPos]) cellOccupantsMap[cellPos] = [];
         cellOccupantsMap[cellPos].push(p.id);
     });
 
-    function triggerUserGestureAudio() {
-        if (gameState && gameState.phase === 'lobby' && lobbyAudioRef.current && lobbyAudioRef.current.paused) {
-            lobbyAudioRef.current.play().catch(function() {});
-        }
-    }
-
-    // Построение 25 клеток настольного поля
     var cellElements = [];
     for (var i = 0; i < TOTAL_CELLS; i++) {
         (function(cellIndex) {
@@ -906,7 +857,7 @@ function TVApp(props) {
             var isStart = cellIndex === 0;
             var isFinish = cellIndex === TOTAL_CELLS - 1;
             var hasPawns = playersList.some(function(p) {
-                var cPos = visualPositions[p.id] !== undefined ? visualPositions[p.id] : (p.position !== undefined ? p.position : 0);
+                var cPos = visualPositions[p.id] !== undefined ? visualPositions[p.id] : (p.position || 0);
                 return cPos === cellIndex;
             });
 
@@ -922,14 +873,14 @@ function TVApp(props) {
             },
                 h('span', { className: 'board-cell-number' }, cellIndex + 1),
                 h('span', { className: 'font-mono text-2xl font-black' },
-                    isStart ? 'СТАРТ' : (isFinish ? 'ФИНИШ 🏆' : cellIndex)
+                    isStart ? 'СТАРТ' : (isFinish ? '🏆 ФИНИШ' : cellIndex)
                 )
             ));
         })(i);
     }
 
     var pawnElements = playersList.map(function(p) {
-        var cellPos = visualPositions[p.id] !== undefined ? visualPositions[p.id] : (p.position !== undefined ? p.position : 0);
+        var cellPos = visualPositions[p.id] !== undefined ? visualPositions[p.id] : (p.position || 0);
         var occupants = cellOccupantsMap[cellPos] || [p.id];
         var offsetIndex = occupants.indexOf(p.id);
 
@@ -944,7 +895,6 @@ function TVApp(props) {
         });
     });
 
-    // Поле всегда лежит абсолютным слоем на весь экран ТВ / iPad
     var boardGridClass = 'board-grid absolute inset-0 w-full h-full pointer-events-none transition-all duration-500 ' +
         (phase === 'board_move' ? 'opacity-100 z-10' : 'opacity-20 filter blur-[1px] z-0');
 
@@ -952,7 +902,7 @@ function TVApp(props) {
 
     if (phase === 'lobby') {
         var lobbyAvatars = playersList.length === 0 
-            ? h('p', { className: 'text-yellow-100 self-center' }, 'Ожидание подключения с телефона...')
+            ? h('p', { className: 'text-yellow-100' }, 'Ожидание игроков с телефона...')
             : playersList.map(function(p) {
                 var avatarInner = isSafeImageSrc(p.selfie)
                     ? h('img', { src: p.selfie, className: 'w-full h-full object-cover' })
@@ -961,7 +911,7 @@ function TVApp(props) {
                 return h('div', { key: p.id, className: 'flex flex-col items-center' },
                     h('div', {
                         className: 'w-16 h-16 rounded-full overflow-hidden border-4 border-black mb-2 flex items-center justify-center shadow-lg',
-                        style: { backgroundColor: p.color || '#FF3B30', borderColor: p.color || '#000000' }
+                        style: { backgroundColor: p.color || '#FF3B30' }
                     }, avatarInner),
                     h('span', { className: 'font-bold text-sm max-w-[80px] truncate' }, p.name)
                 );
@@ -969,7 +919,7 @@ function TVApp(props) {
 
         phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-2xl w-full my-auto' },
             h('h2', { className: 'text-4xl md:text-5xl font-black mb-3' },
-                'Код комнаты: ',
+                'Комната: ',
                 h('span', { className: 'text-yellow-300 tracking-widest' }, roomId)
             ),
             h('div', { className: 'flex flex-col items-center justify-center mb-4' },
@@ -977,23 +927,17 @@ function TVApp(props) {
                     ref: qrRef,
                     className: 'bg-white p-3 rounded-2xl inline-flex border-4 border-black items-center justify-center shadow-lg'
                 }),
-                h('div', { className: 'mt-3 w-full max-w-md bg-black/50 p-2.5 rounded-xl border-2 border-black' },
-                    h('p', { className: 'text-xs text-gray-300 uppercase tracking-wider mb-0.5' }, 'Или откройте ссылку:'),
-                    h('a', {
-                        href: joinUrl,
-                        className: 'text-yellow-300 hover:text-yellow-200 underline font-mono text-xs break-all'
-                    }, joinUrl)
-                )
+                h('div', { className: 'mt-2 text-xs text-yellow-300 font-mono break-all' }, joinUrl)
             ),
             playersList.length >= 1 ? h('div', {
-                className: 'auto-timer-badge text-sm font-bold text-black bg-yellow-300 border-2 border-black px-4 py-2 rounded-xl mb-4 animate-pulse'
-            }, 'Игра начнется автоматически через ' + lobbyCountdown + ' сек (или подключите еще игроков)') : null,
-            h('h3', { className: 'text-lg md:text-xl mb-2 font-bold text-yellow-200' }, 'Игроки (' + playersList.length + '/10):'),
-            h('div', { className: 'flex flex-wrap justify-center gap-3 mb-4 min-h-[70px] max-w-xl mx-auto' }, lobbyAvatars),
+                className: 'text-sm font-bold text-black bg-yellow-300 border-2 border-black px-4 py-1.5 rounded-xl mb-4 inline-block animate-pulse'
+            }, 'Авто-старт через ' + lobbyCountdown + ' сек') : null,
+            h('h3', { className: 'text-lg font-bold text-yellow-200 mb-2' }, 'Игроки (' + playersList.length + '/10):'),
+            h('div', { className: 'flex flex-wrap justify-center gap-3 mb-4 min-h-[60px]' }, lobbyAvatars),
             h('button', {
                 onClick: startNewRound,
                 disabled: playersList.length === 0,
-                className: 'primary-btn px-10 py-3.5 text-xl md:text-2xl w-full'
+                className: 'primary-btn px-10 py-3 text-xl w-full'
             }, 'Начать игру')
         );
     } else if (phase === 'category_vote') {
@@ -1007,31 +951,30 @@ function TVApp(props) {
                 return h('div', {
                     key: p.id,
                     className: 'w-8 h-8 rounded-full border-2 border-black overflow-hidden flex items-center justify-center shadow-md',
-                    style: { backgroundColor: p.color || '#FF3B30', borderColor: p.color || '#000000' }
+                    style: { backgroundColor: p.color || '#FF3B30' }
                 }, head);
             });
 
             return h('div', {
                 key: idx,
-                className: 'glass-card p-3 md:p-4 bg-indigo-900/60 flex flex-col items-center justify-between rounded-2xl border-4 border-black min-h-[120px]'
+                className: 'glass-card p-3 bg-indigo-900/60 flex flex-col items-center justify-between rounded-2xl border-4 border-black min-h-[110px]'
             },
                 h('span', { className: 'text-3xl md:text-5xl mb-1' }, cat.icon),
-                h('h3', { className: 'category-card-title text-base md:text-2xl font-bold mb-1 text-center' }, cat.name),
-                h('div', { className: 'flex gap-1.5 min-h-[32px] items-center justify-center flex-wrap' }, voterBadges)
+                h('h3', { className: 'category-card-title text-base md:text-xl font-bold mb-1' }, cat.name),
+                h('div', { className: 'flex gap-1 min-h-[28px] items-center justify-center flex-wrap' }, voterBadges)
             );
         });
 
         phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
             h('h2', { className: 'text-3xl md:text-4xl font-extrabold mb-1' }, 'Выбор категории'),
-            h('p', { className: 'text-base md:text-lg text-yellow-100 mb-3' }, 'Голосуйте с телефонов прямо сейчас!'),
-            h('div', { className: 'timer-track mb-5' },
+            h('div', { className: 'timer-track mb-4' },
                 h('div', {
                     className: 'timer-bar',
                     style: { width: ((timeLeft / 10) * 100) + '%' }
                 })
             ),
-            h('div', { className: 'categories-grid-6 mb-4' }, categoryCards),
-            h('div', { className: 'text-3xl md:text-4xl font-mono font-black text-yellow-300' }, timeLeft + ' сек')
+            h('div', { className: 'categories-grid-6 mb-3' }, categoryCards),
+            h('div', { className: 'text-3xl font-mono font-black text-yellow-300' }, timeLeft + ' сек')
         );
     } else if ((phase === 'question' || phase === 'answer_reveal') && currentQ) {
         var isResultPhase = phase === 'answer_reveal';
@@ -1046,16 +989,15 @@ function TVApp(props) {
                 var badgeItems = playersChosenThis.map(function(p) {
                     var head = isSafeImageSrc(p.selfie)
                         ? h('img', { src: p.selfie, className: 'w-full h-full object-cover' })
-                        : h('span', { className: 'text-lg text-black font-bold' }, p.selfie || '👤');
+                        : h('span', { className: 'text-base text-black font-bold' }, p.selfie || '👤');
 
                     return h('div', {
                         key: p.id,
-                        className: 'w-10 h-10 rounded-full border-3 border-black overflow-hidden flex items-center justify-center shadow-lg',
+                        className: 'w-9 h-9 rounded-full border-2 border-black overflow-hidden flex items-center justify-center shadow-lg',
                         style: { backgroundColor: p.color || '#FF3B30' }
                     }, head);
                 });
-
-                badges = h('div', { className: 'absolute -bottom-5 left-1/2 -translate-x-1/2 flex gap-1.5 z-30' }, badgeItems);
+                badges = h('div', { className: 'absolute -bottom-4 left-1/2 -translate-x-1/2 flex gap-1 z-30' }, badgeItems);
             }
 
             var btnClass = 'quiz-btn ' + letterClass + ' ' + (isCorrect ? 'quiz-btn-correct ' : '') + (isWrong ? 'opacity-40 ' : '') + 'relative !cursor-default';
@@ -1076,16 +1018,16 @@ function TVApp(props) {
                 h('img', {
                     src: currentQ.imageUrl,
                     alt: 'question',
-                    className: 'max-h-48 max-w-full rounded-2xl border-4 border-black object-contain bg-black/40 shadow-xl'
+                    className: 'max-h-44 max-w-full rounded-2xl border-4 border-black object-contain bg-black/40 shadow-xl'
                 })
             );
         }
 
         phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
             h('div', { className: 'flex justify-between items-center mb-3' },
-                h('span', { className: 'text-xl md:text-2xl text-yellow-300 font-black uppercase' }, 'Вопрос ' + (currentQuestionIndex + 1) + ' из 4'),
-                h('span', { className: 'text-3xl md:text-4xl font-mono font-black bg-black text-yellow-300 px-5 py-1 rounded-xl border-2 border-black' },
-                    phase === 'answer_reveal' ? '✓ Ответ' : (timeLeft + 's')
+                h('span', { className: 'text-xl text-yellow-300 font-black uppercase' }, 'Вопрос ' + (currentQuestionIndex + 1) + ' из 4'),
+                h('span', { className: 'text-3xl font-mono font-black bg-black text-yellow-300 px-4 py-1 rounded-xl border-2 border-black' },
+                    isResultPhase ? '✓ Ответ' : (timeLeft + 's')
                 )
             ),
             imageElement,
@@ -1101,7 +1043,7 @@ function TVApp(props) {
                 currentPos: p.position || 0
             };
             var badgeClass = moveData.rank === 1 ? 'bg-yellow-400 text-black' : (moveData.rank === 2 ? 'bg-slate-300 text-black' : (moveData.rank === 3 ? 'bg-amber-600 text-white' : 'bg-indigo-700 text-white'));
-            var stepsText = '+' + moveData.stepsGained + ' ' + (moveData.stepsGained === 1 ? 'клетка' : ((moveData.stepsGained >= 2 && moveData.stepsGained <= 4) ? 'клетки' : 'клеток'));
+            var stepsText = '+' + moveData.stepsGained + ' ' + (moveData.stepsGained === 1 ? 'шаг' : 'шага');
 
             var head = isSafeImageSrc(p.selfie)
                 ? h('img', { src: p.selfie, className: 'w-full h-full object-cover' })
@@ -1109,40 +1051,35 @@ function TVApp(props) {
 
             return h('div', {
                 key: p.id,
-                className: 'round-summary-item flex items-center justify-between p-3 rounded-2xl bg-indigo-900/80 border-3 border-black'
+                className: 'flex items-center justify-between p-3 rounded-2xl bg-indigo-900/80 border-3 border-black'
             },
-                h('div', { className: 'flex items-center gap-3 md:gap-4' },
-                    h('div', { className: 'round-summary-badge w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center font-black text-lg md:text-xl border-2 border-black ' + badgeClass },
-                        moveData.rank
-                    ),
+                h('div', { className: 'flex items-center gap-3' },
+                    h('div', { className: 'round-summary-badge ' + badgeClass }, moveData.rank),
                     h('div', {
-                        className: 'w-10 h-10 md:w-12 md:h-12 rounded-full border-3 border-black overflow-hidden flex items-center justify-center',
+                        className: 'w-10 h-10 rounded-full border-3 border-black overflow-hidden flex items-center justify-center',
                         style: { backgroundColor: p.color || '#FF3B30' }
                     }, head),
                     h('div', { className: 'text-left' },
-                        h('div', { className: 'font-black text-lg md:text-xl text-white' }, p.name),
+                        h('div', { className: 'font-black text-lg text-white' }, p.name),
                         h('div', { className: 'text-xs text-yellow-200 font-bold' },
                             'Клетка: ' + Math.min(TOTAL_CELLS, (moveData.currentPos || 0) + 1) + ' / ' + TOTAL_CELLS
                         )
                     )
                 ),
-                h('div', { className: 'round-summary-steps text-lg md:text-xl font-black px-3 py-1 md:px-4 md:py-1.5 rounded-xl border-2 border-black bg-lime-400 text-black' },
-                    stepsText
-                )
+                h('div', { className: 'round-summary-steps text-lg font-black' }, stepsText)
             );
         });
 
-        phaseContent = h('div', { className: 'glass-card max-w-2xl w-full p-6 md:p-8 text-center my-auto' },
-            h('h2', { className: 'text-3xl md:text-4xl font-black mb-1 text-yellow-300' }, 'Итоги раунда'),
-            h('p', { className: 'text-base md:text-lg text-yellow-100 mb-4' }, 'Фигурки продвинулись вперед!'),
-            h('div', { className: 'timer-track mb-5' },
+        phaseContent = h('div', { className: 'glass-card max-w-2xl w-full p-6 text-center my-auto' },
+            h('h2', { className: 'text-3xl font-black mb-1 text-yellow-300' }, 'Итоги раунда'),
+            h('div', { className: 'timer-track mb-4' },
                 h('div', {
                     className: 'timer-bar',
                     style: { width: ((timeLeft / 6) * 100) + '%' }
                 })
             ),
-            h('div', { className: 'space-y-2.5 mb-5' }, summaryRows),
-            h('div', { className: 'text-xl md:text-2xl font-mono font-black text-yellow-300' }, 'Следующий раунд через ' + timeLeft + ' сек')
+            h('div', { className: 'space-y-2 mb-4' }, summaryRows),
+            h('div', { className: 'text-xl font-mono font-black text-yellow-300' }, 'Следующий раунд через ' + timeLeft + ' сек')
         );
     } else if (phase === 'finish' && players && winnerId && players[winnerId]) {
         var winnerP = players[winnerId];
@@ -1150,36 +1087,31 @@ function TVApp(props) {
             ? h('img', { src: winnerP.selfie, className: 'w-full h-full object-cover' })
             : h('span', { className: 'text-7xl text-black' }, winnerP.selfie || '👤');
 
-        phaseContent = h('div', { className: 'glass-card p-8 md:p-12 text-center border-4 border-black max-w-xl w-full my-auto' },
-            h('h1', { className: 'text-5xl md:text-6xl font-black mb-5 text-yellow-300 drop-shadow-lg' }, 'ПОБЕДИТЕЛЬ!'),
+        phaseContent = h('div', { className: 'glass-card p-8 text-center border-4 border-black max-w-md w-full my-auto' },
+            h('h1', { className: 'text-4xl md:text-5xl font-black mb-4 text-yellow-300' }, 'ПОБЕДИТЕЛЬ!'),
             h('div', { className: 'flex flex-col items-center' },
                 h('div', {
-                    className: 'w-40 h-40 md:w-48 md:h-48 rounded-full border-8 border-black mb-4 overflow-hidden flex items-center justify-center',
+                    className: 'w-36 h-36 rounded-full border-8 border-black mb-3 overflow-hidden flex items-center justify-center',
                     style: { backgroundColor: winnerP.color || '#FF3B30' }
                 }, winnerHead),
-                h('h2', { className: 'text-4xl md:text-5xl font-black text-white' }, winnerP.name)
+                h('h2', { className: 'text-3xl font-black text-white' }, winnerP.name)
             ),
             h('button', {
-                onClick: function() {
-                    window.location.href = window.location.origin + window.location.pathname;
-                },
-                className: 'mt-6 md:mt-8 primary-btn text-xl md:text-2xl px-8 py-3'
-            }, 'В главное меню')
+                onClick: function() { window.location.href = window.location.origin + window.location.pathname; },
+                className: 'mt-6 primary-btn text-lg px-6 py-2.5'
+            }, 'В меню')
         );
     }
 
     var moveToast = null;
     if (phase === 'board_move') {
         moveToast = h('div', { className: 'move-info-toast z-50' },
-            h('span', { className: 'text-3xl animate-bounce' }, '🎲'),
-            h('div', null, 'Игроки делают ходы! 1 верный ответ = 1 шаг вперед')
+            h('span', { className: 'text-3xl' }, '🎲'),
+            h('div', null, 'Игроки делают ходы!')
         );
     }
 
-    return h('div', {
-        onClick: triggerUserGestureAudio,
-        className: 'tv-container relative w-screen h-screen flex flex-col p-0 m-0 overflow-hidden'
-    },
+    return h('div', { className: 'tv-container relative w-screen h-screen flex flex-col p-0 m-0 overflow-hidden' },
         h('div', { className: boardGridClass }, cellElements.concat(pawnElements)),
         moveToast,
         phaseContent ? h('div', { className: 'tv-modal-overlay' }, phaseContent) : null
@@ -1235,7 +1167,6 @@ function MobileApp(props) {
     var cheerCountdown = cheerCountdownState[0];
     var setCheerCountdown = cheerCountdownState[1];
 
-    // Локальное мгновенное состояние клика для исключения повторных нажатий и задержек
     var localVoteState = useState(null);
     var localVote = localVoteState[0];
     var setLocalVote = localVoteState[1];
@@ -1248,6 +1179,9 @@ function MobileApp(props) {
     var audioChunksRef = useRef([]);
     var recordTimerRef = useRef(null);
     var cheerPreviewRef = useRef(null);
+
+    var phaseStartLocalRef = useRef(Date.now());
+    var lastTimerKeyRef = useRef('');
 
     var handleCloseCamera = useCallback(function() {
         setShowCameraModal(false);
@@ -1264,9 +1198,7 @@ function MobileApp(props) {
                 }
             });
             window.GameSync.init('player', roomId, dbUrl);
-        } catch (err) {
-            console.error("Player sync init error", err);
-        }
+        } catch (err) {}
 
         return function() {
             if (recordTimerRef.current) clearInterval(recordTimerRef.current);
@@ -1276,32 +1208,37 @@ function MobileApp(props) {
         };
     }, [roomId, dbUrl, playerId]);
 
-    // Сброс локальных мгновенных ответов при переходе на новый раунд или вопрос
     useEffect(function() {
         if (!gameState) return;
-        if (gameState.phase !== 'category_vote') {
-            setLocalVote(null);
-        }
-        if (gameState.phase !== 'question') {
-            setLocalAnswer(null);
-        }
-    }, [gameState && gameState.phase, gameState && gameState.currentQuestionIndex]);
+        if (gameState.phase !== 'category_vote') setLocalVote(null);
+        if (gameState.phase !== 'question') setLocalAnswer(null);
+    }, [gameState && gameState.phase, gameState && gameState.timerKey]);
 
+    // Локальный таймер телефона
     useEffect(function() {
-        var timerInterval = null;
-        var syncTime = function() {
-            if (gameState && gameState.timerEndTime && gameState.timerEndTime > 0) {
-                var diff = gameState.timerEndTime - Date.now();
-                setTimeLeft(Math.max(0, Math.ceil(diff / 1000)));
-            } else {
-                setTimeLeft(0);
-            }
+        if (!gameState) return;
+
+        if (gameState.timerKey !== lastTimerKeyRef.current) {
+            lastTimerKeyRef.current = gameState.timerKey || '';
+            phaseStartLocalRef.current = Date.now();
+        }
+
+        var duration = gameState.timerDuration || 0;
+        if (duration <= 0) {
+            setTimeLeft(0);
+            return;
+        }
+
+        var tick = function() {
+            var elapsed = (Date.now() - phaseStartLocalRef.current) / 1000;
+            var remaining = Math.max(0, Math.ceil(duration - elapsed));
+            setTimeLeft(remaining);
         };
 
-        syncTime();
-        timerInterval = setInterval(syncTime, 250);
-        return function() { clearInterval(timerInterval); };
-    }, [gameState && gameState.timerEndTime, gameState && gameState.phase, gameState && gameState.currentQuestionIndex]);
+        tick();
+        var timer = setInterval(tick, 200);
+        return function() { clearInterval(timer); };
+    }, [gameState && gameState.timerKey, gameState && gameState.timerDuration]);
 
     var usedColors = useMemo(function() {
         if (!gameState || !gameState.players) return [];
@@ -1327,25 +1264,26 @@ function MobileApp(props) {
         }
     }, [usedColors, color]);
 
+    // Компактная запись клича (2.5 сек, 16kbps)
     function startRecordingCheer() {
         if (isRecordingCheer) return;
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            alert("Ваш браузер не поддерживает запись аудио.");
+            alert("Запись аудио не поддерживается");
             return;
         }
 
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
             audioChunksRef.current = [];
-
             var mimeType = '';
             if (window.MediaRecorder) {
-                if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+                if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
                 else if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
-                else if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
             }
 
-            var options = mimeType ? { mimeType: mimeType } : {};
-            var mediaRecorder = new MediaRecorder(stream, options);
+            var recorderOptions = { audioBitsPerSecond: 16000 };
+            if (mimeType) recorderOptions.mimeType = mimeType;
+
+            var mediaRecorder = new MediaRecorder(stream, recorderOptions);
             mediaRecorderRef.current = mediaRecorder;
 
             mediaRecorder.ondataavailable = function(event) {
@@ -1359,8 +1297,12 @@ function MobileApp(props) {
                 var blob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
                 var reader = new FileReader();
                 reader.onloadend = function() {
-                    setCheerAudio(reader.result);
+                    var base64 = reader.result;
+                    setCheerAudio(base64);
                     setIsRecordingCheer(false);
+                    if (playerId) {
+                        window.GameSync.uploadCheerAudio(roomId, playerId, base64);
+                    }
                 };
                 reader.readAsDataURL(blob);
             };
@@ -1381,45 +1323,30 @@ function MobileApp(props) {
                         mediaRecorderRef.current.stop();
                     }
                 }
-            }, 1000);
-        }).catch(function(err) {
-            console.error("Microphone error:", err);
-            alert("Не удалось получить доступ к микрофону. Клич можно пропустить.");
+            }, 850);
+        }).catch(function() {
             setIsRecordingCheer(false);
         });
     }
 
     function playCheerPreview() {
         if (!cheerAudio) return;
-        if (cheerPreviewRef.current) {
-            cheerPreviewRef.current.pause();
-        }
+        if (cheerPreviewRef.current) cheerPreviewRef.current.pause();
         var audio = new Audio(cheerAudio);
         cheerPreviewRef.current = audio;
-        audio.play().catch(function(e) { console.log("Audio play error", e); });
+        audio.play().catch(function() {});
     }
 
-    var isRoomFull = useMemo(function() {
-        var count = Object.keys((gameState && gameState.players) || {}).length;
-        var isSelfIn = Boolean(gameState && gameState.players && gameState.players[playerId]);
-        return count >= 10 && !isSelfIn;
-    }, [gameState && gameState.players, playerId]);
-
     function handleJoin() {
-        if (isRoomFull) {
-            alert("Комната заполнена (максимум 10 игроков)");
+        var count = Object.keys((gameState && gameState.players) || {}).length;
+        if (count >= 10) {
+            alert("Комната заполнена");
             return;
         }
-        var fallbackColor = null;
-        for (var i = 0; i < PLAYER_COLORS.length; i++) {
-            if (usedColors.indexOf(PLAYER_COLORS[i]) === -1) {
-                fallbackColor = PLAYER_COLORS[i];
-                break;
-            }
-        }
-        var assignedColor = color || fallbackColor || '#FF3B30';
-        if (!name.trim() || !selfie || !assignedColor || usedColors.indexOf(assignedColor) !== -1) {
-            alert("Заполните имя, выберите селфи и свободный цвет!");
+
+        var assignedColor = color || PLAYER_COLORS[0];
+        if (!name.trim() || !selfie) {
+            alert("Введите имя и выберите аватар/селфи!");
             return;
         }
 
@@ -1433,73 +1360,47 @@ function MobileApp(props) {
             name: name.trim().slice(0, 12),
             color: assignedColor,
             selfie: selfie,
-            cheerAudio: cheerAudio || null,
+            hasCheer: Boolean(cheerAudio),
             position: 0,
             score: 0
         };
 
-        if (window.GameSync && window.GameSync.patchPlayer) {
-            window.GameSync.patchPlayer(roomId, newId, newPlayerData);
-        } else {
-            var existingPlayers = Object.assign({}, (gameState && gameState.players) || {});
-            existingPlayers[newId] = newPlayerData;
-            window.GameSync.updateState({
-                players: existingPlayers
-            });
+        if (cheerAudio) {
+            window.GameSync.uploadCheerAudio(roomId, newId, cheerAudio);
         }
+
+        window.GameSync.patchPlayer(roomId, newId, newPlayerData);
         setIsJoined(true);
     }
 
     function sendVote(catId) {
-        if (!playerId) return;
-        if (localVote !== null) return;
-        if (gameState && gameState.categoryVotes && gameState.categoryVotes[playerId]) return;
-        
+        if (!playerId || localVote !== null) return;
         setLocalVote(catId);
-        if (window.GameSync && window.GameSync.patchVote) {
-            window.GameSync.patchVote(roomId, playerId, catId);
-        } else {
-            var existingVotes = Object.assign({}, (gameState && gameState.categoryVotes) || {});
-            existingVotes[playerId] = catId;
-            window.GameSync.updateState({
-                categoryVotes: existingVotes
-            });
-        }
+        window.GameSync.patchVote(roomId, playerId, catId);
     }
 
     function sendAnswer(optionIndex) {
-        if (!playerId) return;
-        if (!gameState || gameState.phase !== 'question') return;
-        if (localAnswer !== null) return;
-        if (gameState.playerAnswers && gameState.playerAnswers[playerId] !== undefined) return;
-        
+        if (!playerId || !gameState || gameState.phase !== 'question' || localAnswer !== null) return;
         setLocalAnswer(optionIndex);
-        if (window.GameSync && window.GameSync.patchAnswer) {
-            window.GameSync.patchAnswer(roomId, playerId, optionIndex);
-        } else {
-            var existingAnswers = Object.assign({}, (gameState && gameState.playerAnswers) || {});
-            existingAnswers[playerId] = optionIndex;
-            window.GameSync.updateState({
-                playerAnswers: existingAnswers
-            });
-        }
+        window.GameSync.patchAnswer(roomId, playerId, optionIndex);
     }
 
     if (!isJoined || !gameState || !gameState.players || !gameState.players[playerId]) {
         var selfieInner = null;
         if (!selfie) {
-            selfieInner = h('div', { className: 'absolute inset-0 flex items-center justify-center text-2xl' }, '👤');
+            selfieInner = h('span', { className: 'text-2xl' }, '👤');
         } else if (isSafeImageSrc(selfie)) {
             selfieInner = h('img', { src: selfie, className: 'w-full h-full object-cover' });
         } else {
-            selfieInner = h('div', { className: 'w-full h-full bg-white flex items-center justify-center text-3xl text-black' }, selfie);
+            selfieInner = h('span', { className: 'text-2xl text-black' }, selfie);
         }
 
         var emojiButtons = EMOJI_AVATARS.map(function(em) {
             return h('button', {
                 key: em,
+                type: 'button',
                 onClick: function() { setSelfie(em); },
-                className: 'text-xl p-1 rounded-lg border-2 border-black ' + (selfie === em ? 'bg-yellow-400' : 'bg-white/20')
+                className: 'text-lg p-1 rounded-md border border-black ' + (selfie === em ? 'bg-yellow-400' : 'bg-white/20')
             }, em);
         });
 
@@ -1511,7 +1412,7 @@ function MobileApp(props) {
                 type: 'button',
                 onClick: function() { if (!isTaken) setColor(c); },
                 disabled: isTaken,
-                className: 'color-select-btn w-9 h-9 rounded-full flex items-center justify-center font-black text-white text-base transition-transform ' + (isSelected ? 'selected' : ''),
+                className: 'color-select-btn !w-8 !h-8 text-xs font-black ' + (isSelected ? 'selected' : ''),
                 style: { backgroundColor: c }
             }, isSelected ? '✓' : '');
         });
@@ -1522,14 +1423,14 @@ function MobileApp(props) {
                 type: 'button',
                 onClick: startRecordingCheer,
                 disabled: isRecordingCheer,
-                className: 'primary-btn audio-record-btn w-full !py-2 text-sm ' + (isRecordingCheer ? 'audio-record-active !bg-red-600 animate-pulse text-white' : '!bg-amber-400')
-            }, isRecordingCheer ? ('🔴 Запись клича... (' + cheerCountdown + ' сек)') : '🎤 Записать победный клич');
+                className: 'primary-btn w-full !py-2 text-xs !bg-amber-400'
+            }, isRecordingCheer ? ('🔴 Идет запись (' + cheerCountdown + 'с)') : '🎤 Записать победный клич');
         } else {
             cheerControls = h('div', { className: 'flex gap-2 w-full' },
                 h('button', {
                     type: 'button',
                     onClick: playCheerPreview,
-                    className: 'primary-btn flex-1 !py-2 text-sm !bg-emerald-500 hover:!bg-emerald-600'
+                    className: 'primary-btn flex-1 !py-1.5 text-xs !bg-emerald-500'
                 }, '▶️ Прослушать'),
                 h('button', {
                     type: 'button',
@@ -1537,49 +1438,58 @@ function MobileApp(props) {
                         setCheerAudio(null);
                         startRecordingCheer();
                     },
-                    className: 'primary-btn flex-1 !py-2 text-sm !bg-gray-600 hover:!bg-gray-700'
-                }, '🔄 Переписать')
+                    className: 'primary-btn flex-1 !py-1.5 text-xs !bg-gray-600'
+                }, '🔄 Перезаписать клич')
             );
         }
 
-        return h('div', { className: 'mobile-container !py-2 !px-3 overflow-y-auto flex items-center justify-center' },
+        return h('div', { className: 'mobile-container' },
             h(CameraModal, {
                 isOpen: showCameraModal,
                 onClose: handleCloseCamera,
                 onSave: setSelfie
             }),
-            h('div', { className: 'glass-card w-full max-w-sm !p-4 space-y-2.5 my-auto max-h-[96dvh] overflow-y-auto' },
-                h('h2', { className: 'text-2xl font-black text-center text-yellow-300 leading-tight' }, 'Вход в игру'),
-                h('div', { className: 'flex flex-col items-center gap-2' },
+            h('div', { className: 'glass-card w-full max-w-sm !p-3.5 space-y-2.5 my-auto' },
+                h('h2', { className: 'text-xl font-black text-center text-yellow-300' }, 'Вход в игру'),
+                
+                // Ряд: Аватарка + Кнопка селфи горизонтально
+                h('div', { className: 'flex items-center gap-3 w-full bg-black/30 p-2 rounded-xl border border-black' },
                     h('div', {
-                        className: 'camera-preview-container relative w-16 h-16 rounded-full overflow-hidden flex items-center justify-center border-3 border-black shrink-0 shadow-md',
-                        style: { backgroundColor: color || '#FF3B30', borderColor: color || '#000000' }
+                        className: 'w-12 h-12 rounded-full overflow-hidden flex items-center justify-center border-2 border-black shrink-0',
+                        style: { backgroundColor: color || '#FF3B30' }
                     }, selfieInner),
                     h('button', {
+                        type: 'button',
                         onClick: function() { setShowCameraModal(true); },
-                        className: 'primary-btn w-full !py-2 text-sm'
-                    }, '📸 Сделать селфи'),
-                    h('div', { className: 'flex gap-1.5 flex-wrap justify-center' }, emojiButtons)
+                        className: 'primary-btn flex-1 !py-1.5 text-xs'
+                    }, '📸 Сделать селфи')
                 ),
+
+                h('div', { className: 'flex gap-1 flex-wrap justify-center' }, emojiButtons),
+
                 h('input', {
                     type: 'text',
                     value: name,
                     onChange: function(e) { setName(e.target.value); },
                     placeholder: 'Ваше имя',
                     maxLength: '12',
-                    className: '!py-2 !px-3 !text-base'
+                    className: '!py-1.5 !px-3 !text-sm'
                 }),
-                h('div', { className: 'color-picker-grid grid grid-cols-5 gap-2 pt-1 justify-items-center w-full' }, colorButtons),
-                h('div', { className: 'w-full bg-black/30 p-2.5 rounded-xl border-2 border-black flex flex-col items-center gap-2' },
-                    h('div', { className: 'text-xs font-black text-yellow-300 uppercase tracking-wide' }, 'Победный клич (3 сек)'),
+
+                // 10 кружков цветов в 2 ряда по 5 штук
+                h('div', { className: 'grid grid-cols-5 gap-1.5 justify-items-center w-full py-1' }, colorButtons),
+
+                // Блок победного клича
+                h('div', { className: 'w-full bg-black/30 p-2 rounded-xl border border-black flex flex-col items-center gap-1.5' },
+                    h('div', { className: 'text-[11px] font-black text-yellow-300 uppercase' }, 'Победный клич (2.5 сек)'),
                     cheerControls
                 ),
-                isRoomFull ? h('div', { className: 'text-red-400 font-bold text-center text-sm' }, 'Комната заполнена (максимум 10 игроков)') : null,
+
                 h('button', {
+                    type: 'button',
                     onClick: handleJoin,
-                    disabled: isRoomFull,
-                    className: 'primary-btn w-full !mt-2 text-lg !py-2.5'
-                }, isRoomFull ? 'Комната заполнена' : 'Войти в игру')
+                    className: 'primary-btn w-full !mt-1 text-base !py-2.5 shadow-lg'
+                }, 'Войти в игру')
             )
         );
     }
@@ -1587,13 +1497,12 @@ function MobileApp(props) {
     var phase = gameState.phase;
     var categoriesToVote = gameState.categoriesToVote;
     var currentQuestionIndex = gameState.currentQuestionIndex || 0;
-    var currentQuestions = gameState.currentQuestions;
     var players = gameState.players || {};
     var categoryVotes = gameState.categoryVotes || {};
     var playerAnswers = gameState.playerAnswers || {};
     var roundMoves = gameState.roundMoves || {};
 
-    var myPlayer = players[playerId];
+    var myPlayer = players[playerId] || { name: 'Я', color: '#FF3B30' };
     var standings = getSortedStandings(players);
     var myRank = 0;
     for (var ri = 0; ri < standings.length; ri++) {
@@ -1609,7 +1518,8 @@ function MobileApp(props) {
     var effectiveAnswer = localAnswer !== null ? localAnswer : playerAnswers[playerId];
     var hasAnswered = effectiveAnswer !== undefined && effectiveAnswer !== null;
 
-    var currentQ = (currentQuestions || [])[currentQuestionIndex] || null;
+    // Гарантированный показ вариантов ответов из activeQuestion или currentQuestions
+    var currentQ = gameState.activeQuestion || (gameState.currentQuestions && gameState.currentQuestions[currentQuestionIndex]) || null;
 
     var myHead = isSafeImageSrc(myPlayer.selfie)
         ? h('img', { src: myPlayer.selfie, className: 'w-full h-full object-cover' })
@@ -1618,14 +1528,14 @@ function MobileApp(props) {
     var mobilePhaseContent = null;
 
     if (phase === 'lobby') {
-        mobilePhaseContent = h('div', { className: 'text-center glass-card p-8' },
-            h('h2', { className: 'text-2xl font-black mb-2' }, 'Вы в игре!'),
-            h('p', { className: 'text-yellow-100 font-bold' }, 'Ожидайте запуска партии на экране ТВ.')
+        mobilePhaseContent = h('div', { className: 'text-center glass-card p-6' },
+            h('h2', { className: 'text-xl font-black mb-1' }, 'Вы в игре!'),
+            h('p', { className: 'text-yellow-100 font-bold text-sm' }, 'Ожидайте старта на экране ТВ...')
         );
     } else if (phase === 'category_vote') {
         var voteButtons = (categoriesToVote || []).map(function(cat) {
             var isChosen = effectiveVote === cat.id;
-            var catBtnClasses = 'glass-card flex flex-col items-center justify-center text-center p-3 transition-all min-h-[90px] ' +
+            var catBtnClasses = 'glass-card flex flex-col items-center justify-center text-center p-2 min-h-[80px] ' +
                 (isChosen ? '!bg-yellow-400 !text-black !border-black font-black ' : '') +
                 (hasVoted && !isChosen ? 'opacity-40 grayscale ' : '');
 
@@ -1635,13 +1545,13 @@ function MobileApp(props) {
                 disabled: hasVoted,
                 className: catBtnClasses
             },
-                h('span', { className: 'text-3xl mb-1' }, cat.icon),
-                h('span', { className: 'category-card-title text-sm font-bold line-clamp-2' }, cat.name)
+                h('span', { className: 'text-2xl mb-1' }, cat.icon),
+                h('span', { className: 'text-xs font-bold leading-tight' }, cat.name)
             );
         });
 
-        mobilePhaseContent = h('div', { className: 'flex flex-col gap-2 h-full justify-center overflow-y-auto py-2' },
-            h('h2', { className: 'text-xl font-black text-center mb-1 text-yellow-300' }, 'Выберите тему (из 6):'),
+        mobilePhaseContent = h('div', { className: 'flex flex-col gap-2 h-full justify-center' },
+            h('h2', { className: 'text-base font-black text-center text-yellow-300' }, 'Выберите категорию:'),
             h('div', { className: 'grid grid-cols-2 gap-2' }, voteButtons)
         );
     } else if (phase === 'question') {
@@ -1649,7 +1559,7 @@ function MobileApp(props) {
         var answerButtons = answerLetters.map(function(lbl, i) {
             var isSelected = effectiveAnswer === i;
             var optionText = (currentQ && currentQ.options && currentQ.options[i]) ? currentQ.options[i] : ('Вариант ' + lbl);
-            var btnClasses = 'quiz-btn quiz-btn-' + lbl.toLowerCase() + ' py-3 px-3 ' +
+            var btnClasses = 'quiz-btn quiz-btn-' + lbl.toLowerCase() + ' !py-2.5 !px-3 ' +
                 (isSelected ? 'quiz-btn-selected ' : '') +
                 (hasAnswered && !isSelected ? 'opacity-40 ' : '');
 
@@ -1659,80 +1569,67 @@ function MobileApp(props) {
                 disabled: hasAnswered,
                 className: btnClasses
             },
-                h('div', { className: 'quiz-btn-letter font-black shrink-0' }, lbl),
-                h('div', { className: 'quiz-btn-text text-base sm:text-lg font-black leading-snug text-left break-words flex-1' },
+                h('div', { className: 'quiz-btn-letter shrink-0' }, lbl),
+                h('div', { className: 'quiz-btn-text text-sm font-black' },
                     optionText + (isSelected ? ' ✓' : '')
                 )
             );
         });
 
         mobilePhaseContent = h('div', { className: 'flex flex-col h-full justify-between pb-2' },
-            h('div', { className: 'text-center mb-2' },
-                h('div', { className: 'text-sm text-yellow-300 font-black uppercase' }, 'Вопрос ' + (currentQuestionIndex + 1) + ' из 4'),
-                h('div', { className: 'text-3xl font-mono font-black' }, timeLeft)
+            h('div', { className: 'text-center mb-1' },
+                h('div', { className: 'text-xs text-yellow-300 font-black uppercase' }, 'Вопрос ' + (currentQuestionIndex + 1) + ' из 4'),
+                h('div', { className: 'text-2xl font-mono font-black' }, timeLeft)
             ),
-            h('div', { className: 'grid grid-cols-1 gap-2.5 flex-1 justify-center my-auto' }, answerButtons)
+            h('div', { className: 'grid grid-cols-1 gap-2 flex-1 justify-center my-auto' }, answerButtons)
         );
     } else if (phase === 'answer_reveal') {
-        mobilePhaseContent = h('div', { className: 'text-center glass-card p-8 border-4 border-black' },
-            h('h2', { className: 'text-2xl font-black mb-2 text-yellow-300' }, 'Внимание на экран!'),
-            h('p', { className: 'text-lg font-bold' }, 'Подсчитываем правильные ответы...')
+        mobilePhaseContent = h('div', { className: 'text-center glass-card p-6 border-4 border-black' },
+            h('h2', { className: 'text-xl font-black mb-1 text-yellow-300' }, 'Внимание на экран ТВ!'),
+            h('p', { className: 'text-sm font-bold' }, 'Смотрим правильный ответ...')
         );
     } else if (phase === 'board_move') {
-        mobilePhaseContent = h('div', { className: 'text-center glass-card p-8 border-4 border-black' },
-            h('div', { className: 'text-6xl mb-4 animate-bounce' }, '🏃‍♂️'),
-            h('h2', { className: 'text-2xl font-black mb-2 text-yellow-300' }, 'Фигурки шагают!')
+        mobilePhaseContent = h('div', { className: 'text-center glass-card p-6 border-4 border-black' },
+            h('div', { className: 'text-5xl mb-2 animate-bounce' }, '🏃‍♂️'),
+            h('h2', { className: 'text-xl font-black text-yellow-300' }, 'Фигурки шагают по полю!')
         );
     } else if (phase === 'round_summary') {
         var myMoveData = roundMoves[playerId];
-        var summaryBody = null;
-        if (myMoveData) {
-            var stepLabel = myMoveData.stepsGained === 1 ? 'шаг' : 'шага';
-            summaryBody = h('div', { className: 'w-full space-y-3' },
-                h('div', { className: 'round-summary-badge inline-flex items-center justify-center px-4 py-2 rounded-xl text-xl font-black bg-yellow-400 text-black border-2 border-black mb-2' },
+        mobilePhaseContent = h('div', { className: 'text-center glass-card p-5 border-4 border-black' },
+            h('div', { className: 'text-4xl mb-2' }, '📊'),
+            h('h2', { className: 'text-2xl font-black mb-2 text-yellow-300' }, 'Итоги раунда'),
+            myMoveData ? h('div', { className: 'space-y-2' },
+                h('div', { className: 'text-lg font-black text-black bg-yellow-400 py-1 px-3 rounded-lg border-2 border-black inline-block' },
                     myMoveData.rank + ' место'
                 ),
-                h('div', { className: 'round-summary-steps text-2xl font-black py-2 px-4 rounded-xl border-2 border-black bg-lime-400 text-black' },
-                    '+' + myMoveData.stepsGained + ' ' + stepLabel
-                ),
-                h('div', { className: 'text-lg font-bold text-white bg-indigo-900/70 p-3 rounded-xl border-2 border-black' },
-                    'Текущая клетка: ',
-                    h('span', { className: 'text-yellow-300 font-black' }, Math.min(TOTAL_CELLS, (myMoveData.currentPos || 0) + 1)),
-                    ' из ' + TOTAL_CELLS
+                h('div', { className: 'text-xl font-black text-black bg-lime-400 py-1.5 px-3 rounded-lg border-2 border-black' },
+                    '+' + myMoveData.stepsGained + ' ' + (myMoveData.stepsGained === 1 ? 'шаг' : 'шага')
                 )
-            );
-        } else {
-            summaryBody = h('p', { className: 'text-lg font-bold' }, 'Подведение итогов...');
-        }
-
-        mobilePhaseContent = h('div', { className: 'round-summary-modal flex flex-col justify-center items-center text-center glass-card p-6 border-4 border-black my-auto' },
-            h('div', { className: 'text-5xl mb-3 animate-bounce' }, '📊'),
-            h('h2', { className: 'text-3xl font-black mb-4 text-yellow-300' }, 'Итоги раунда'),
-            summaryBody
+            ) : h('p', null, 'Подсчет результатов...')
         );
     } else if (phase === 'finish') {
         var isWinner = gameState.winnerId === playerId;
-        mobilePhaseContent = h('div', { className: 'text-center glass-card p-8 border-4 border-black' },
-            h('div', { className: 'text-7xl mb-4 animate-bounce' }, '🏆'),
-            h('h2', { className: 'text-3xl font-black mb-3 text-yellow-300' }, 'Игра окончена'),
-            h('p', { className: 'text-2xl font-black' }, isWinner ? 'ВЫ ПОБЕДИЛИ! 🎉' : 'Смотрите результаты на ТВ')
+        mobilePhaseContent = h('div', { className: 'text-center glass-card p-6 border-4 border-black' },
+            h('div', { className: 'text-6xl mb-3 animate-bounce' }, '🏆'),
+            h('h2', { className: 'text-2xl font-black mb-2 text-yellow-300' }, 'Игра окончена!'),
+            h('p', { className: 'text-xl font-black' }, isWinner ? 'ВЫ ПОБЕДИЛИ! 🎉' : 'Смотрите итоги на ТВ')
         );
     }
 
-    return h('div', { className: 'mobile-container select-none' },
-        h('div', { className: 'glass-card p-3 mb-2 flex items-center justify-between !py-2 !px-4 !rounded-2xl shrink-0' },
-            h('div', { className: 'flex items-center gap-3' },
+    return h('div', { className: 'mobile-container' },
+        h('div', { className: 'glass-card p-2 flex items-center justify-between shrink-0' },
+            h('div', { className: 'flex items-center gap-2' },
                 h('div', {
-                    className: 'w-10 h-10 rounded-full border-2 border-black overflow-hidden flex items-center justify-center',
+                    className: 'w-8 h-8 rounded-full border-2 border-black overflow-hidden flex items-center justify-center',
                     style: { backgroundColor: myPlayer.color || '#FF3B30' }
                 }, myHead),
                 h('div', null,
-                    h('div', { className: 'font-black text-lg leading-tight' }, myPlayer.name),
-                    h('div', { className: 'text-xs text-yellow-300 font-bold' }, myRank > 0 ? (myRank + ' место') : '')
+                    h('div', { className: 'font-black text-sm' }, myPlayer.name),
+                    h('div', { className: 'text-[11px] text-yellow-300 font-bold' }, myRank > 0 ? (myRank + ' место') : '')
                 )
             )
         ),
-        h('div', { className: 'flex-1 flex flex-col justify-center overflow-hidden' }, mobilePhaseContent)
+        h('div', { className: 'flex-1 flex flex-col justify-center' }, mobilePhaseContent)
     );
 }
 
@@ -1751,9 +1648,7 @@ function App() {
         role = params.get('role');
         room = params.get('room');
         var rawDb = params.get('db');
-        if (rawDb) {
-            db = rawDb;
-        }
+        if (rawDb) db = rawDb;
     } else {
         var matchRole = search.match(/[?&]role=([^&]+)/);
         if (matchRole) role = decodeURIComponent(matchRole[1]);
