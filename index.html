@@ -10,11 +10,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700;800&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
 
-    <!-- Статический TailwindCSS v2.2.19 (100% совместимо со Smart TV webOS и планшетами) -->
+    <!-- Статический TailwindCSS v2.2.19 (100% совместимо со Smart TV webOS и мобильными устройствами) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     
-    <!-- Основная таблица стилей с версией v=5 -->
-    <link rel="stylesheet" href="styles.css?v=5">
+    <!-- Основная внешняя таблица стилей -->
+    <link rel="stylesheet" href="styles.css">
     
     <!-- Кроссбраузерный патч разметки -->
     <style>
@@ -103,7 +103,7 @@
     <!-- Подключение библиотеки для QR-кода -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
     
-    <!-- Подключение React 18 UMD (БЕЗ Babel, чистый ES5-рантайм) -->
+    <!-- Подключение React 18 UMD (чистый ES5-рантайм для Smart TV и мобильных) -->
     <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 </head>
@@ -111,9 +111,9 @@
     <!-- Корневой контейнер приложения -->
     <div id="root" class="app-bg min-h-screen w-screen font-sans overflow-x-hidden"></div>
 
-    <!-- Подключение чистых ES5-скриптов с обновленной версией ?v=5 -->
-    <script src="questions.js?v=5"></script>
-    <script src="sync.js?v=5"></script>
-    <script src="app.js?v=5"></script>
+    <!-- Подключение скриптов в строгом порядке -->
+    <script src="questions.js"></script>
+    <script src="sync.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
