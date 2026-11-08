@@ -1,18 +1,23 @@
 // filename: sync.js
+// Весь код строго в стандарте ES5 для гарантированной работы на LG Smart TV (webOS) и старых мобильных устройствах
 window.GameSync = (function() {
     var stateChangeCallback = null;
     var currentRoomCode = null;
     var databaseUrl = null;
     var currentRole = null;
-    var bc = null; // BroadcastChannel для мгновенного обмена между вкладками одного устройства
+    var bc = null; // BroadcastChannel для параллельной синхронизации соседних вкладок одного ПК
     var firebaseInterval = null;
     var activePushCount = 0;
+
+    var isFetching = false;
+    var lastPushTimestamp = 0;
+    var lastTriggeredJson = '';
+    var roomCheersCache = {};
 
     function safeGetStorage(key) {
         try {
             return window.localStorage ? window.localStorage.getItem(key) : null;
         } catch (e) {
-            console.warn("Storage read error:", e);
             return null;
         }
     }
@@ -22,16 +27,13 @@ window.GameSync = (function() {
             if (window.localStorage) {
                 window.localStorage.setItem(key, value);
             }
-        } catch (e) {
-            console.warn("Storage write error:", e);
-        }
+        } catch (e) {}
     }
 
     function safeParse(str) {
         try {
             return JSON.parse(str);
         } catch (e) {
-            console.error("GameSync JSON Parse Error:", e);
             return null;
         }
     }
@@ -44,6 +46,18 @@ window.GameSync = (function() {
         return trimmed;
     }
 
+    function shallowClone(obj) {
+        var clone = {};
+        if (obj && typeof obj === 'object') {
+            for (var key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                    clone[key] = obj[key];
+                }
+            }
+        }
+        return clone;
+    }
+
     var localState = {
         phase: 'lobby',
         players: {},
@@ -54,22 +68,28 @@ window.GameSync = (function() {
         currentRound: 0,
         currentQuestionIndex: 0,
         currentQuestions: [],
-        timerEndTime: 0,
+        activeQuestion: null,
+        timerDuration: 0,
+        timerKey: '',
         roundMoves: {},
         winnerId: null
     };
 
     function triggerCallback() {
-        if (stateChangeCallback) {
-            stateChangeCallback(JSON.parse(JSON.stringify(localState)));
+        if (!stateChangeCallback) return;
+        var currentJson = JSON.stringify(localState);
+        // Отсечение холостых ререндеров
+        if (currentJson === lastTriggeredJson) {
+            return;
         }
+        lastTriggeredJson = currentJson;
+        stateChangeCallback(JSON.parse(currentJson));
     }
 
     function isObject(item) {
         return (item && typeof item === 'object' && !Array.isArray(item));
     }
 
-    // Ключи, которые при сбросе раунда/вопроса хостом должны очищаться
     var RESET_KEYS = ['playerAnswers', 'categoryVotes', 'roundMoves'];
 
     function mergeDeep(target, source) {
@@ -80,7 +100,6 @@ window.GameSync = (function() {
 
             if (RESET_KEYS.indexOf(key) !== -1) {
                 if (source[key] === null || (isObject(source[key]) && Object.keys(source[key]).length === 0)) {
-                    // Явный сброс ответов/голосов/ходов при передаче null или пустого объекта {}
                     target[key] = {};
                 } else if (isObject(source[key])) {
                     if (!target[key] || typeof target[key] !== 'object') {
@@ -114,20 +133,45 @@ window.GameSync = (function() {
         mergeDeep(localState, partialState);
     }
 
-    // Полный снимок БД из Firebase: пустые объекты {} в Firebase RTDB удаляются и возвращаются как null
     function syncFromRemote(remoteData) {
         if (!remoteData || typeof remoteData !== 'object') return;
 
-        var remoteQIndex = remoteData.currentQuestionIndex !== undefined ? remoteData.currentQuestionIndex : localState.currentQuestionIndex;
-        var remotePhase = remoteData.phase || localState.phase;
-        var isNewQuestionOrPhase = (remoteQIndex !== localState.currentQuestionIndex) || (remotePhase !== localState.phase);
+        // Защита Хоста: если пуш был недавно, игнорируем старый эхо-ответ сервера
+        if (Date.now() - lastPushTimestamp < 1200) {
+            return;
+        }
+
+        // Хост во время раунда является единственным источником правды для состояния игры
+        if (currentRole === 'host' && localState.phase !== 'lobby') {
+            if (remoteData.players) {
+                mergeDeep(localState.players, remoteData.players);
+            }
+            if (remoteData.categoryVotes) {
+                localState.categoryVotes = remoteData.categoryVotes;
+            } else {
+                localState.categoryVotes = {};
+            }
+            if (remoteData.playerAnswers) {
+                localState.playerAnswers = remoteData.playerAnswers;
+            } else {
+                localState.playerAnswers = {};
+            }
+            return;
+        }
+
+        // Для телефона игрока: сохраняем локальную запись своего профиля от случайного затирания
+        var myPlayerId = safeGetStorage('tv_game_player_id') || safeGetStorage('playerId');
+        var myLocalPlayerBackup = (myPlayerId && localState.players && localState.players[myPlayerId]) ? localState.players[myPlayerId] : null;
 
         mergeDeep(localState, remoteData);
 
+        if (myPlayerId && myLocalPlayerBackup && (!localState.players || !localState.players[myPlayerId])) {
+            if (!localState.players) localState.players = {};
+            localState.players[myPlayerId] = myLocalPlayerBackup;
+        }
+
         RESET_KEYS.forEach(function(key) {
             if (!(key in remoteData) || remoteData[key] === null) {
-                localState[key] = {};
-            } else if (isNewQuestionOrPhase && (!remoteData[key] || Object.keys(remoteData[key]).length === 0)) {
                 localState[key] = {};
             }
         });
@@ -142,6 +186,12 @@ window.GameSync = (function() {
             bc.onmessage = function(event) {
                 var incoming = typeof event.data === 'string' ? safeParse(event.data) : event.data;
                 if (incoming) {
+                    if (incoming.type === 'cheer_audio') {
+                        if (incoming.playerId && incoming.audio) {
+                            roomCheersCache[incoming.playerId] = incoming.audio;
+                        }
+                        return;
+                    }
                     mergeState(incoming);
                     triggerCallback();
                 }
@@ -157,29 +207,34 @@ window.GameSync = (function() {
     }
 
     function fetchStateFromFirebase(roomCode) {
-        if (!databaseUrl || activePushCount > 0) return;
-        fetch(getFirebaseUrl(roomCode))
+        if (!databaseUrl || activePushCount > 0 || isFetching) return;
+
+        isFetching = true;
+        var url = getFirebaseUrl(roomCode) + '?t=' + Date.now();
+
+        fetch(url, { method: 'GET', cache: 'no-store' })
             .then(function(res) {
                 return res.json();
             })
             .then(function(data) {
+                isFetching = false;
                 if (data && typeof data === 'object' && activePushCount === 0) {
                     syncFromRemote(data);
                     triggerCallback();
                 }
             })
-            .catch(function(err) {
-                // Игнорируем сетевые сбои отдельных тактов поллинга
+            .catch(function() {
+                isFetching = false;
             });
     }
 
     function pushStateToFirebase(roomCode, stateToPush) {
         if (!databaseUrl) return Promise.resolve();
 
-        var firebasePayload = Object.assign({}, stateToPush);
+        lastPushTimestamp = Date.now();
+        var firebasePayload = shallowClone(stateToPush);
         var resetPromises = [];
 
-        // Если хост очищает playerAnswers или categoryVotes, заменяем на null и шлем точечный PUT
         RESET_KEYS.forEach(function(key) {
             if (key in firebasePayload && isObject(firebasePayload[key]) && Object.keys(firebasePayload[key]).length === 0) {
                 firebasePayload[key] = null;
@@ -196,16 +251,13 @@ window.GameSync = (function() {
         activePushCount++;
         var mainPush = fetch(getFirebaseUrl(roomCode), {
             method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(firebasePayload)
         })
         .then(function(res) {
             activePushCount = Math.max(0, activePushCount - 1);
             return res;
         }, function(err) {
-            console.error("GameSync Firebase Push Error:", err);
             activePushCount = Math.max(0, activePushCount - 1);
         });
 
@@ -220,7 +272,6 @@ window.GameSync = (function() {
 
         databaseUrl = sanitizeDbUrl(dbUrl);
         if (!databaseUrl) {
-            console.warn("GameSync: Firebase DB URL invalid or omitted. Using local BroadcastChannel.");
             return;
         }
 
@@ -255,7 +306,6 @@ window.GameSync = (function() {
 
             initBroadcastChannel(roomCode);
             initFirebase(roomCode, dbUrl);
-
             triggerCallback();
         },
 
@@ -274,9 +324,7 @@ window.GameSync = (function() {
             mergeState(partialState);
 
             if (bc) {
-                try {
-                    bc.postMessage(partialState);
-                } catch (e) {}
+                try { bc.postMessage(partialState); } catch (e) {}
             }
 
             triggerCallback();
@@ -287,14 +335,11 @@ window.GameSync = (function() {
             return Promise.resolve();
         },
 
-        // Атомарная отправка голоса за категорию: не затирает голоса других игроков
         patchVote: function(roomCode, playerId, categoryId) {
             var targetRoom = roomCode || currentRoomCode;
             if (!playerId) return Promise.resolve();
 
-            if (!localState.categoryVotes) {
-                localState.categoryVotes = {};
-            }
+            if (!localState.categoryVotes) localState.categoryVotes = {};
             localState.categoryVotes[playerId] = categoryId;
 
             var updateObj = { categoryVotes: {} };
@@ -303,11 +348,11 @@ window.GameSync = (function() {
             if (bc) {
                 try { bc.postMessage(updateObj); } catch (e) {}
             }
-
             triggerCallback();
 
             if (targetRoom && databaseUrl) {
                 activePushCount++;
+                lastPushTimestamp = Date.now();
                 var payload = {};
                 payload[playerId] = categoryId;
                 return fetch(getFirebaseUrl(targetRoom, 'categoryVotes'), {
@@ -317,22 +362,18 @@ window.GameSync = (function() {
                 }).then(function(res) {
                     activePushCount = Math.max(0, activePushCount - 1);
                     return res;
-                }).catch(function(err) {
+                }).catch(function() {
                     activePushCount = Math.max(0, activePushCount - 1);
-                    console.error("GameSync patchVote Error:", err);
                 });
             }
             return Promise.resolve();
         },
 
-        // Атомарная отправка ответа на вопрос: не затирает ответы других игроков
         patchAnswer: function(roomCode, playerId, answerIndex) {
             var targetRoom = roomCode || currentRoomCode;
             if (!playerId) return Promise.resolve();
 
-            if (!localState.playerAnswers) {
-                localState.playerAnswers = {};
-            }
+            if (!localState.playerAnswers) localState.playerAnswers = {};
             localState.playerAnswers[playerId] = answerIndex;
 
             var updateObj = { playerAnswers: {} };
@@ -341,11 +382,11 @@ window.GameSync = (function() {
             if (bc) {
                 try { bc.postMessage(updateObj); } catch (e) {}
             }
-
             triggerCallback();
 
             if (targetRoom && databaseUrl) {
                 activePushCount++;
+                lastPushTimestamp = Date.now();
                 var payload = {};
                 payload[playerId] = answerIndex;
                 return fetch(getFirebaseUrl(targetRoom, 'playerAnswers'), {
@@ -355,37 +396,39 @@ window.GameSync = (function() {
                 }).then(function(res) {
                     activePushCount = Math.max(0, activePushCount - 1);
                     return res;
-                }).catch(function(err) {
+                }).catch(function() {
                     activePushCount = Math.max(0, activePushCount - 1);
-                    console.error("GameSync patchAnswer Error:", err);
                 });
             }
             return Promise.resolve();
         },
 
-        // Атомарное обновление профиля игрока в списке players
+        // Сохранение игрока без тяжелого Base64 аудио (сохраняется только флаг hasCheer)
         patchPlayer: function(roomCode, playerId, playerData) {
             var targetRoom = roomCode || currentRoomCode;
             if (!playerId) return Promise.resolve();
 
-            if (!localState.players) {
-                localState.players = {};
-            }
-            localState.players[playerId] = playerData;
+            var cleanPlayerData = shallowClone(playerData);
+            var hadCheer = Boolean(cleanPlayerData.cheerAudio || cleanPlayerData.hasCheer);
+            delete cleanPlayerData.cheerAudio;
+            cleanPlayerData.hasCheer = hadCheer;
+
+            if (!localState.players) localState.players = {};
+            localState.players[playerId] = cleanPlayerData;
 
             var updateObj = { players: {} };
-            updateObj.players[playerId] = playerData;
+            updateObj.players[playerId] = cleanPlayerData;
 
             if (bc) {
                 try { bc.postMessage(updateObj); } catch (e) {}
             }
-
             triggerCallback();
 
             if (targetRoom && databaseUrl) {
                 activePushCount++;
+                lastPushTimestamp = Date.now();
                 var payload = {};
-                payload[playerId] = playerData;
+                payload[playerId] = cleanPlayerData;
                 return fetch(getFirebaseUrl(targetRoom, 'players'), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
@@ -393,12 +436,64 @@ window.GameSync = (function() {
                 }).then(function(res) {
                     activePushCount = Math.max(0, activePushCount - 1);
                     return res;
-                }).catch(function(err) {
+                }).catch(function() {
                     activePushCount = Math.max(0, activePushCount - 1);
-                    console.error("GameSync patchPlayer Error:", err);
                 });
             }
             return Promise.resolve();
+        },
+
+        // Отдельная ветка для аудио клича: /room_audio/{roomCode}/{playerId}.json
+        uploadCheerAudio: function(roomCode, playerId, base64Audio) {
+            var targetRoom = roomCode || currentRoomCode;
+            if (!playerId || !base64Audio) return Promise.resolve();
+
+            roomCheersCache[playerId] = base64Audio;
+            if (bc) {
+                try {
+                    bc.postMessage({ type: 'cheer_audio', playerId: playerId, audio: base64Audio });
+                } catch (e) {}
+            }
+
+            if (targetRoom && databaseUrl) {
+                var audioUrl = databaseUrl + '/room_audio/' + encodeURIComponent(targetRoom) + '/' + encodeURIComponent(playerId) + '.json';
+                return fetch(audioUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(base64Audio)
+                }).catch(function() {});
+            }
+            return Promise.resolve();
+        },
+
+        // Подгрузка аудио кличей комнаты Хостом один раз перед анимацией ходов
+        fetchRoomCheers: function(roomCode, callback) {
+            var targetRoom = roomCode || currentRoomCode;
+            if (!targetRoom || !databaseUrl) {
+                if (typeof callback === 'function') callback(roomCheersCache);
+                return;
+            }
+
+            var audioUrl = databaseUrl + '/room_audio/' + encodeURIComponent(targetRoom) + '.json?t=' + Date.now();
+            fetch(audioUrl, { method: 'GET', cache: 'no-store' })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data && typeof data === 'object') {
+                        for (var pid in data) {
+                            if (Object.prototype.hasOwnProperty.call(data, pid) && data[pid]) {
+                                roomCheersCache[pid] = data[pid];
+                            }
+                        }
+                    }
+                    if (typeof callback === 'function') callback(roomCheersCache);
+                })
+                .catch(function() {
+                    if (typeof callback === 'function') callback(roomCheersCache);
+                });
+        },
+
+        getCheerAudio: function(playerId) {
+            return roomCheersCache[playerId] || null;
         },
 
         getPlayerId: function() {
@@ -417,7 +512,7 @@ window.GameSync = (function() {
     };
 })();
 
-// Захват квадратного селфи с фронтальной камеры: вырезает квадрат по центру, сжимает до 120x120 JPEG 0.65
+// Сжатие квадратного селфи для сохранения легкого трафика
 window.captureSelfie = function(videoElement, customSize, customQuality) {
     return new Promise(function(resolve) {
         if (!videoElement) {
@@ -443,23 +538,13 @@ window.captureSelfie = function(videoElement, customSize, customQuality) {
             var ctx = canvas.getContext('2d');
 
             ctx.imageSmoothingEnabled = true;
-            if ('imageSmoothingQuality' in ctx) {
-                ctx.imageSmoothingQuality = 'high';
-            }
-
             var minDim = Math.min(videoWidth, videoHeight);
             var startX = (videoWidth - minDim) / 2;
             var startY = (videoHeight - minDim) / 2;
 
-            ctx.drawImage(
-                videoElement,
-                startX, startY, minDim, minDim,
-                0, 0, targetSize, targetSize
-            );
-
+            ctx.drawImage(videoElement, startX, startY, minDim, minDim, 0, 0, targetSize, targetSize);
             resolve(canvas.toDataURL('image/jpeg', quality));
         } catch (e) {
-            console.error("captureSelfie error:", e);
             resolve(null);
         }
     });
