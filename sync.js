@@ -136,8 +136,8 @@ window.GameSync = (function() {
     function syncFromRemote(remoteData) {
         if (!remoteData || typeof remoteData !== 'object') return;
 
-        // Защита Хоста: если пуш был недавно, игнорируем старый эхо-ответ сервера
-        if (Date.now() - lastPushTimestamp < 1200) {
+        // Защита Хоста: если пуш был недавно, игнорируем старый эхо-ответ сервера (2500 мс окно)
+        if (Date.now() - lastPushTimestamp < 2500) {
             return;
         }
 
@@ -146,12 +146,42 @@ window.GameSync = (function() {
             if (remoteData.players) {
                 mergeDeep(localState.players, remoteData.players);
             }
-            if (remoteData.categoryVotes) {
+
+            var isHostVotesEmpty = (!localState.categoryVotes || Object.keys(localState.categoryVotes).length === 0);
+            if (localState.phase === 'category_vote' && isHostVotesEmpty) {
+                if (remoteData.timerKey && remoteData.timerKey !== localState.timerKey) {
+                    localState.categoryVotes = {};
+                } else if (Date.now() - lastPushTimestamp < 3500) {
+                    localState.categoryVotes = {};
+                } else if (remoteData.categoryVotes) {
+                    localState.categoryVotes = remoteData.categoryVotes;
+                } else {
+                    localState.categoryVotes = {};
+                }
+            } else if (remoteData.categoryVotes) {
                 localState.categoryVotes = remoteData.categoryVotes;
             } else {
                 localState.categoryVotes = {};
             }
-            if (remoteData.playerAnswers) {
+
+            var isHostAnswersEmpty = (!localState.playerAnswers || Object.keys(localState.playerAnswers).length === 0);
+            var isAnsweringPhase = (localState.phase === 'question' || localState.phase === 'category_vote');
+
+            // Предотвращение фантомных ответов: если Хост во время фаз question и category_vote
+            // переключает состояние и локально очистил playerAnswers = {}, не восстанавливать старые ответы
+            if (isAnsweringPhase && isHostAnswersEmpty) {
+                if (remoteData.timerKey && remoteData.timerKey !== localState.timerKey) {
+                    localState.playerAnswers = {};
+                } else if (remoteData.currentQuestionIndex !== undefined && remoteData.currentQuestionIndex !== localState.currentQuestionIndex) {
+                    localState.playerAnswers = {};
+                } else if (Date.now() - lastPushTimestamp < 3500) {
+                    localState.playerAnswers = {};
+                } else if (remoteData.playerAnswers) {
+                    localState.playerAnswers = remoteData.playerAnswers;
+                } else {
+                    localState.playerAnswers = {};
+                }
+            } else if (remoteData.playerAnswers) {
                 localState.playerAnswers = remoteData.playerAnswers;
             } else {
                 localState.playerAnswers = {};
@@ -162,6 +192,11 @@ window.GameSync = (function() {
         // Для телефона игрока: сохраняем локальную запись своего профиля от случайного затирания
         var myPlayerId = safeGetStorage('tv_game_player_id') || safeGetStorage('playerId');
         var myLocalPlayerBackup = (myPlayerId && localState.players && localState.players[myPlayerId]) ? localState.players[myPlayerId] : null;
+
+        // Если сменился таймер или номер вопроса, очищаем локальный кэш ответов на телефоне перед слиянием
+        if (remoteData.timerKey && remoteData.timerKey !== localState.timerKey) {
+            localState.playerAnswers = {};
+        }
 
         mergeDeep(localState, remoteData);
 
@@ -191,6 +226,12 @@ window.GameSync = (function() {
                             roomCheersCache[incoming.playerId] = incoming.audio;
                         }
                         return;
+                    }
+                    if (incoming.playerAnswers && isObject(incoming.playerAnswers) && Object.keys(incoming.playerAnswers).length === 0) {
+                        localState.playerAnswers = {};
+                    }
+                    if (incoming.categoryVotes && isObject(incoming.categoryVotes) && Object.keys(incoming.categoryVotes).length === 0) {
+                        localState.categoryVotes = {};
                     }
                     mergeState(incoming);
                     triggerCallback();
@@ -236,8 +277,11 @@ window.GameSync = (function() {
         var resetPromises = [];
 
         RESET_KEYS.forEach(function(key) {
-            if (key in firebasePayload && isObject(firebasePayload[key]) && Object.keys(firebasePayload[key]).length === 0) {
+            var val = firebasePayload[key];
+            var isValEmpty = val === null || (isObject(val) && Object.keys(val).length === 0);
+            if (key in firebasePayload && isValEmpty) {
                 firebasePayload[key] = null;
+                localState[key] = {};
                 resetPromises.push(
                     fetch(getFirebaseUrl(roomCode, key), {
                         method: 'PUT',
@@ -331,6 +375,35 @@ window.GameSync = (function() {
 
             if (currentRoomCode && databaseUrl) {
                 return pushStateToFirebase(currentRoomCode, partialState);
+            }
+            return Promise.resolve();
+        },
+
+        // Гарантированная немедленная очистка ответов во всех средах (локальный стейт, BroadcastChannel, Firebase)
+        clearAnswers: function(roomCode) {
+            var targetRoom = roomCode || currentRoomCode;
+            localState.playerAnswers = {};
+            lastPushTimestamp = Date.now();
+
+            if (bc) {
+                try {
+                    bc.postMessage({ playerAnswers: {} });
+                } catch (e) {}
+            }
+            triggerCallback();
+
+            if (targetRoom && databaseUrl) {
+                activePushCount++;
+                return fetch(getFirebaseUrl(targetRoom, 'playerAnswers'), {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: 'null'
+                }).then(function(res) {
+                    activePushCount = Math.max(0, activePushCount - 1);
+                    return res;
+                }).catch(function() {
+                    activePushCount = Math.max(0, activePushCount - 1);
+                });
             }
             return Promise.resolve();
         },
