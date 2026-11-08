@@ -182,6 +182,7 @@ function Pawn(props) {
                 style: {
                     backgroundColor: playerColor,
                     borderColor: playerColor,
+                    boxShadow: '0 0 12px ' + playerColor + ', 3px 3px 0 #000000',
                     '--player-color': playerColor
                 }
             }, headContent),
@@ -417,6 +418,7 @@ function TVApp(props) {
     var nextPhaseTimeoutRef = useRef(null);
     var lobbyEndTimeRef = useRef(null);
     var startNewRoundRef = useRef(null);
+    var podiumAudioRef = useRef(null);
 
     // Независимый расчет локального таймера для предотвращения Clock Skew
     var phaseStartLocalRef = useRef(Date.now());
@@ -434,7 +436,7 @@ function TVApp(props) {
 
     useEffect(function() {
         phaseLockRef.current = false;
-    }, [gameState && gameState.phase, gameState && gameState.timerKey]);
+    }, [gameState && gameState.phase, gameState && gameState.timerKey, gameState && gameState.finishStep]);
 
     // Локальный расчет оставшегося времени без задержек сети
     useEffect(function() {
@@ -532,12 +534,20 @@ function TVApp(props) {
                 currentQuestions: [],
                 activeQuestion: null,
                 players: {},
-                roundMoves: {}
+                roundMoves: {},
+                finishStep: 0,
+                standings: []
             });
         } catch (err) {}
 
         return function() {
             if (nextPhaseTimeoutRef.current) clearTimeout(nextPhaseTimeoutRef.current);
+            if (podiumAudioRef.current) {
+                try {
+                    podiumAudioRef.current.pause();
+                    podiumAudioRef.current.currentTime = 0;
+                } catch(e) {}
+            }
         };
     }, [roomId, dbUrl]);
 
@@ -580,50 +590,142 @@ function TVApp(props) {
         setVisualPositions(positions);
     }, [gameState && gameState.players, isAnimatingRoundMoves]);
 
+    // QR-код: гарантированная очистка контейнера при смене фазы во избежание просвечивания
     useEffect(function() {
-        if (gameState && gameState.phase === 'lobby' && qrRef.current) {
-            qrRef.current.innerHTML = '';
-            try {
-                var minDim = Math.min(window.innerWidth || 800, window.innerHeight || 600);
-                var qrSize = Math.min(220, Math.max(140, Math.floor(minDim * 0.25)));
-                new QRCode(qrRef.current, {
-                    text: joinUrl,
-                    width: qrSize,
-                    height: qrSize,
-                    colorDark : "#000000",
-                    colorLight : "#ffffff",
-                    correctLevel : QRCode.CorrectLevel.M
-                });
-            } catch(e) {}
+        if (gameState && gameState.phase === 'lobby') {
+            if (qrRef.current) {
+                qrRef.current.innerHTML = '';
+                try {
+                    var minDim = Math.min(window.innerWidth || 800, window.innerHeight || 600);
+                    var qrSize = Math.min(220, Math.max(140, Math.floor(minDim * 0.25)));
+                    new QRCode(qrRef.current, {
+                        text: joinUrl,
+                        width: qrSize,
+                        height: qrSize,
+                        colorDark : "#000000",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.M
+                    });
+                } catch(e) {}
+            }
+        } else {
+            if (qrRef.current) {
+                qrRef.current.innerHTML = '';
+                qrRef.current = null;
+            }
         }
+        return function() {
+            if (qrRef.current) {
+                qrRef.current.innerHTML = '';
+            }
+        };
     }, [gameState && gameState.phase, joinUrl]);
 
+    // Аудио победного клича для призеров церемонии награждения топ-3 (на повторе 12 секунд)
+    useEffect(function() {
+        if (gameState && gameState.phase === 'finish') {
+            window.GameSync.fetchRoomCheers(roomId, function() {
+                var currentStandings = (gameState.standings && gameState.standings.length > 0)
+                    ? gameState.standings
+                    : getSortedStandings(gameState.players);
+                var podiumList = currentStandings.slice(0, 3);
+                var currentStep = gameState.finishStep || 0;
+
+                if (currentStep < podiumList.length) {
+                    var currPlayer = podiumList[currentStep];
+                    if (currPlayer) {
+                        if (podiumAudioRef.current) {
+                            try {
+                                podiumAudioRef.current.pause();
+                                podiumAudioRef.current.currentTime = 0;
+                            } catch(e) {}
+                        }
+                        var cheer = window.GameSync.getCheerAudio(currPlayer.id) || currPlayer.cheerAudio;
+                        if (cheer) {
+                            try {
+                                var a = new Audio(cheer);
+                                a.loop = true;
+                                podiumAudioRef.current = a;
+                                var pPromise = a.play();
+                                if (pPromise !== undefined) {
+                                    pPromise.catch(function() {});
+                                }
+                            } catch(err) {}
+                        }
+                    }
+                }
+            });
+        } else {
+            if (podiumAudioRef.current) {
+                try {
+                    podiumAudioRef.current.pause();
+                    podiumAudioRef.current.currentTime = 0;
+                } catch(e) {}
+                podiumAudioRef.current = null;
+            }
+        }
+
+        return function() {
+            if (podiumAudioRef.current) {
+                try {
+                    podiumAudioRef.current.pause();
+                    podiumAudioRef.current.currentTime = 0;
+                } catch(e) {}
+            }
+        };
+    }, [gameState && gameState.phase, gameState && gameState.finishStep, roomId]);
+
+    // Логика выбора категории: большинство голосов, при равенстве — случайный выбор из набравших максимум
     var handleVoteFinished = useCallback(function() {
         if (phaseLockRef.current) return;
         phaseLockRef.current = true;
 
         var syncState = window.GameSync ? window.GameSync._getState() : {};
         var votes = syncState.categoryVotes || {};
+        var categoriesToVoteList = syncState.categoriesToVote || [];
+
         var voteCounts = {};
+        categoriesToVoteList.forEach(function(c) {
+            voteCounts[c.id] = 0;
+        });
+
         for (var vKey in votes) {
             if (Object.prototype.hasOwnProperty.call(votes, vKey)) {
-                var cat = votes[vKey];
-                voteCounts[cat] = (voteCounts[cat] || 0) + 1;
+                var catId = votes[vKey];
+                if (catId) {
+                    voteCounts[catId] = (voteCounts[catId] || 0) + 1;
+                }
             }
         }
 
-        var chosenCat = 'cinema';
-        if (syncState.categoriesToVote && syncState.categoriesToVote.length > 0) {
-            chosenCat = syncState.categoriesToVote[0].id || 'cinema';
-        }
-        var maxCount = -1;
+        var maxCount = 0;
         for (var cId in voteCounts) {
             if (Object.prototype.hasOwnProperty.call(voteCounts, cId)) {
                 if (voteCounts[cId] > maxCount) {
                     maxCount = voteCounts[cId];
-                    chosenCat = cId;
                 }
             }
+        }
+
+        var tiedCategories = [];
+        if (maxCount === 0) {
+            tiedCategories = categoriesToVoteList.map(function(c) { return c.id; });
+        } else {
+            for (var cKey in voteCounts) {
+                if (Object.prototype.hasOwnProperty.call(voteCounts, cKey)) {
+                    if (voteCounts[cKey] === maxCount) {
+                        tiedCategories.push(cKey);
+                    }
+                }
+            }
+        }
+
+        var chosenCat = 'cinema';
+        if (tiedCategories.length > 0) {
+            var randomIndex = Math.floor(Math.random() * tiedCategories.length);
+            chosenCat = tiedCategories[randomIndex];
+        } else if (categoriesToVoteList.length > 0) {
+            chosenCat = categoriesToVoteList[0].id;
         }
 
         var questions = window.QuestionBank.getQuestions(chosenCat, 4);
@@ -784,7 +886,7 @@ function TVApp(props) {
         }, 6000);
     }, [roomId]);
 
-    // Проверка завершения фаз по таймеру и ответам игроков с защитой от фантомных срабатываний
+    // Проверка завершения фаз по таймеру и ответам игроков
     useEffect(function() {
         if (!gameState) return;
         var phase = gameState.phase;
@@ -811,19 +913,84 @@ function TVApp(props) {
             if (isTimeUp) {
                 if (!phaseLockRef.current) {
                     phaseLockRef.current = true;
-                    var winner = null;
+                    var hasWinner = false;
                     for (var pid in players) {
                         if (Object.prototype.hasOwnProperty.call(players, pid)) {
                             if ((players[pid].position || 0) >= TOTAL_CELLS - 1) {
-                                winner = players[pid];
+                                hasWinner = true;
                                 break;
                             }
                         }
                     }
-                    if (winner) {
-                        window.GameSync.updateState({ phase: 'finish', winnerId: winner.id, timerDuration: 0 });
+                    if (hasWinner) {
+                        var standingsList = getSortedStandings(players);
+                        window.GameSync.updateState({
+                            phase: 'finish',
+                            finishStep: 0,
+                            winnerId: standingsList[0] ? standingsList[0].id : null,
+                            standings: standingsList,
+                            timerDuration: 12,
+                            timerKey: 'podium_0_' + Date.now()
+                        });
                     } else {
                         startNewRound();
+                    }
+                }
+            }
+        } else if (phase === 'finish') {
+            if (isTimeUp) {
+                if (!phaseLockRef.current) {
+                    phaseLockRef.current = true;
+                    var currentStandings = (gameState.standings && gameState.standings.length > 0)
+                        ? gameState.standings
+                        : getSortedStandings(gameState.players);
+                    var podiumList = currentStandings.slice(0, 3);
+                    var currentStep = gameState.finishStep || 0;
+                    var nextStep = currentStep + 1;
+
+                    if (nextStep < podiumList.length) {
+                        window.GameSync.updateState({
+                            finishStep: nextStep,
+                            timerDuration: 12,
+                            timerKey: 'podium_' + nextStep + '_' + Date.now()
+                        });
+                    } else {
+                        // Церемония награждения топ-3 завершена: возврат в лобби с сохранением игроков и обнулением позиций
+                        if (podiumAudioRef.current) {
+                            try {
+                                podiumAudioRef.current.pause();
+                                podiumAudioRef.current.currentTime = 0;
+                            } catch(e) {}
+                            podiumAudioRef.current = null;
+                        }
+                        var resetPlayers = {};
+                        for (var resetId in players) {
+                            if (Object.prototype.hasOwnProperty.call(players, resetId)) {
+                                var pClone = Object.assign({}, players[resetId]);
+                                pClone.position = 0;
+                                pClone.score = 0;
+                                resetPlayers[resetId] = pClone;
+                            }
+                        }
+                        StartMusicManager.play();
+                        window.GameSync.updateState({
+                            phase: 'lobby',
+                            finishStep: 0,
+                            winnerId: null,
+                            standings: [],
+                            players: resetPlayers,
+                            timerDuration: 0,
+                            timerKey: '',
+                            categoriesToVote: [],
+                            playedCategories: [],
+                            categoryVotes: {},
+                            playerAnswers: {},
+                            currentRound: 0,
+                            currentQuestionIndex: 0,
+                            currentQuestions: [],
+                            activeQuestion: null,
+                            roundMoves: {}
+                        });
                     }
                 }
             }
@@ -838,7 +1005,6 @@ function TVApp(props) {
     var categoriesToVote = gameState.categoriesToVote;
     var currentQuestionIndex = gameState.currentQuestionIndex || 0;
     var players = gameState.players || {};
-    var winnerId = gameState.winnerId;
     var categoryVotes = gameState.categoryVotes || {};
     var playerAnswers = gameState.playerAnswers || {};
     var roundMoves = gameState.roundMoves || {};
@@ -928,13 +1094,14 @@ function TVApp(props) {
                 );
             });
 
-        phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-2xl w-full my-auto' },
+        phaseContent = h('div', { key: 'lobby-card', className: 'glass-card p-6 md:p-8 text-center max-w-2xl w-full my-auto' },
             h('h2', { className: 'text-4xl md:text-5xl font-black mb-3' },
                 'Комната: ',
                 h('span', { className: 'text-yellow-300 tracking-widest' }, roomId)
             ),
             h('div', { className: 'flex flex-col items-center justify-center mb-4' },
                 h('div', {
+                    key: 'lobby-qr-box',
                     ref: qrRef,
                     className: 'bg-white p-3 rounded-2xl inline-flex border-4 border-black items-center justify-center shadow-lg'
                 }),
@@ -976,9 +1143,9 @@ function TVApp(props) {
             );
         });
 
-        phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
+        phaseContent = h('div', { key: 'category-vote-card', className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
             h('h2', { className: 'text-3xl md:text-4xl font-extrabold mb-1' }, 'Выбор категории'),
-            h('div', { className: 'timer-track mb-4' },
+            h('div', { key: 'vote-timer-track', className: 'timer-track mb-4' },
                 h('div', {
                     className: 'timer-bar',
                     style: { width: ((timeLeft / 60) * 100) + '%' }
@@ -1034,7 +1201,7 @@ function TVApp(props) {
             );
         }
 
-        phaseContent = h('div', { className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
+        phaseContent = h('div', { key: 'question-card-' + currentQuestionIndex, className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
             h('div', { className: 'flex justify-between items-center mb-3' },
                 h('span', { className: 'text-xl text-yellow-300 font-black uppercase' }, 'Вопрос ' + (currentQuestionIndex + 1) + ' из 4'),
                 h('span', { className: 'text-3xl font-mono font-black bg-black text-yellow-300 px-4 py-1 rounded-xl border-2 border-black' },
@@ -1081,7 +1248,7 @@ function TVApp(props) {
             );
         });
 
-        phaseContent = h('div', { className: 'glass-card max-w-2xl w-full p-6 text-center my-auto' },
+        phaseContent = h('div', { key: 'round-summary-card', className: 'glass-card max-w-2xl w-full p-6 text-center my-auto' },
             h('h2', { className: 'text-3xl font-black mb-1 text-yellow-300' }, 'Итоги раунда'),
             h('div', { className: 'timer-track mb-4' },
                 h('div', {
@@ -1092,25 +1259,82 @@ function TVApp(props) {
             h('div', { className: 'space-y-2 mb-4' }, summaryRows),
             h('div', { className: 'text-xl font-mono font-black text-yellow-300' }, 'Следующий раунд через ' + timeLeft + ' сек')
         );
-    } else if (phase === 'finish' && players && winnerId && players[winnerId]) {
-        var winnerP = players[winnerId];
-        var winnerHead = isSafeImageSrc(winnerP.selfie)
-            ? h('img', { src: winnerP.selfie, className: 'w-full h-full object-cover' })
-            : h('span', { className: 'text-7xl text-black' }, winnerP.selfie || '👤');
+    } else if (phase === 'finish') {
+        var standingsFinish = (gameState.standings && gameState.standings.length > 0)
+            ? gameState.standings
+            : getSortedStandings(players);
+        var podiumList = standingsFinish.slice(0, 3);
+        var currentStep = gameState.finishStep || 0;
+        var pItem = podiumList[currentStep] || podiumList[0];
 
-        phaseContent = h('div', { className: 'glass-card p-8 text-center border-4 border-black max-w-md w-full my-auto' },
-            h('h1', { className: 'text-4xl md:text-5xl font-black mb-4 text-yellow-300' }, 'ПОБЕДИТЕЛЬ!'),
-            h('div', { className: 'flex flex-col items-center' },
+        var stepClass = 'podium-gold';
+        var rankTitle = '1 МЕСТО — ЗОЛОТО 🏆';
+        var rankBadgeColor = 'bg-yellow-400 text-black';
+        var rankColorHex = '#FFD700';
+
+        if (currentStep === 1) {
+            stepClass = 'podium-silver';
+            rankTitle = '2 МЕСТО — СЕРЕБРО 🥈';
+            rankBadgeColor = 'bg-slate-200 text-black';
+            rankColorHex = '#CBD5E1';
+        } else if (currentStep === 2) {
+            stepClass = 'podium-bronze';
+            rankTitle = '3 МЕСТО — БРОНЗА 🥉';
+            rankBadgeColor = 'bg-amber-600 text-white';
+            rankColorHex = '#CD7F32';
+        }
+
+        var avatarContent = null;
+        if (pItem) {
+            avatarContent = isSafeImageSrc(pItem.selfie)
+                ? h('img', { src: pItem.selfie, className: 'w-full h-full object-cover rounded-full' })
+                : h('span', { className: 'text-8xl md:text-9xl text-black select-none' }, pItem.selfie || '👤');
+        }
+
+        phaseContent = h('div', {
+            key: 'finish-overlay-' + currentStep,
+            className: 'winner-podium-overlay'
+        },
+            h('div', {
+                className: 'podium-card ' + stepClass + ' glass-card flex flex-col items-center justify-between p-6 md:p-8 relative overflow-hidden text-center',
+                style: {
+                    borderColor: rankColorHex,
+                    boxShadow: '0 0 50px ' + rankColorHex + ', 8px 8px 0 #000000',
+                    width: '90vw',
+                    maxWidth: '900px',
+                    height: '85vh',
+                    maxHeight: '85vh'
+                }
+            },
                 h('div', {
-                    className: 'w-36 h-36 rounded-full border-8 border-black mb-3 overflow-hidden flex items-center justify-center',
-                    style: { backgroundColor: winnerP.color || '#FF3B30' }
-                }, winnerHead),
-                h('h2', { className: 'text-3xl font-black text-white' }, winnerP.name)
-            ),
-            h('button', {
-                onClick: function() { window.location.href = window.location.origin + window.location.pathname; },
-                className: 'mt-6 primary-btn text-lg px-6 py-2.5'
-            }, 'В меню')
+                    className: 'podium-ribbon text-2xl md:text-4xl font-black py-2.5 px-8 rounded-2xl border-4 border-black mb-2 inline-block uppercase shadow-lg ' + rankBadgeColor
+                }, rankTitle),
+
+                h('div', {
+                    className: 'podium-avatar-giant rounded-full overflow-hidden flex items-center justify-center my-auto transition-transform transform hover:scale-105',
+                    style: {
+                        backgroundColor: (pItem && pItem.color) || '#FF3B30',
+                        borderColor: '#000000',
+                        borderWidth: '8px',
+                        borderStyle: 'solid',
+                        boxShadow: '0 0 35px ' + rankColorHex + ', 8px 8px 0 #000000',
+                        width: 'clamp(220px, 42vh, 400px)',
+                        height: 'clamp(220px, 42vh, 400px)',
+                        minWidth: 'clamp(220px, 42vh, 400px)',
+                        minHeight: 'clamp(220px, 42vh, 400px)'
+                    }
+                }, avatarContent),
+
+                h('div', { className: 'mt-2 w-full flex flex-col items-center' },
+                    h('h2', { className: 'text-3xl md:text-5xl font-black text-white mb-1 drop-shadow-md' }, pItem ? pItem.name : 'Игрок'),
+                    h('div', { className: 'text-lg md:text-xl font-bold text-yellow-200' },
+                        'Клетка: ' + Math.min(TOTAL_CELLS, (pItem ? pItem.position : 0) + 1) + ' / ' + TOTAL_CELLS
+                    ),
+                    h('div', { className: 'mt-2 text-base md:text-lg font-mono font-black text-yellow-300 bg-black/60 px-5 py-1 rounded-full border-2 border-black' },
+                        'Смена через: ' + timeLeft + ' сек'
+                    )
+                )
+            )
         );
     }
 
@@ -1125,7 +1349,7 @@ function TVApp(props) {
     return h('div', { className: 'tv-container relative w-screen h-screen flex flex-col p-0 m-0 overflow-hidden' },
         h('div', { className: boardGridClass }, cellElements.concat(pawnElements)),
         moveToast,
-        phaseContent ? h('div', { className: 'tv-modal-overlay' }, phaseContent) : null
+        phaseContent ? (phase === 'finish' ? phaseContent : h('div', { className: 'tv-modal-overlay' }, phaseContent)) : null
     );
 }
 
@@ -1282,7 +1506,6 @@ function MobileApp(props) {
         }
     }, [usedColors, color]);
 
-    // Компактная запись клича (2.5 сек, 16kbps)
     function startRecordingCheer() {
         if (isRecordingCheer) return;
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1431,7 +1654,11 @@ function MobileApp(props) {
                 onClick: function() { if (!isTaken) setColor(c); },
                 disabled: isTaken,
                 className: 'color-select-btn !w-8 !h-8 text-xs font-black ' + (isSelected ? 'selected' : ''),
-                style: { backgroundColor: c }
+                style: {
+                    backgroundColor: c,
+                    borderColor: isSelected ? c : '#000000',
+                    boxShadow: isSelected ? ('0 0 14px ' + c + ', 3px 3px 0 #000000') : '2px 2px 0 #000000'
+                }
             }, isSelected ? '✓' : '');
         });
 
@@ -1444,7 +1671,6 @@ function MobileApp(props) {
                 className: 'primary-btn w-full !py-2 text-xs !bg-amber-400'
             }, isRecordingCheer ? ('🔴 Идет запись (' + cheerCountdown + 'с)') : '🎤 Записать победный клич');
         } else {
-            // Кнопка перезаписи вертикально под кнопкой прослушивания, чтобы не убегать за правый край
             cheerControls = h('div', { className: 'flex flex-col gap-2 w-full' },
                 h('button', {
                     type: 'button',
@@ -1471,11 +1697,16 @@ function MobileApp(props) {
             h('div', { className: 'glass-card w-full max-w-sm !p-3.5 space-y-2.5 my-auto' },
                 h('h2', { className: 'text-xl font-black text-center text-yellow-300' }, 'Вход в игру'),
                 
-                // Ряд: Аватарка + Кнопка селфи горизонтально
+                // Ряд: Аватарка с подсветкой выбранным цветом + Кнопка селфи
                 h('div', { className: 'flex items-center gap-3 w-full bg-black/30 p-2 rounded-xl border border-black' },
                     h('div', {
-                        className: 'w-12 h-12 rounded-full overflow-hidden flex items-center justify-center border-2 border-black shrink-0',
-                        style: { backgroundColor: color || '#FF3B30' }
+                        className: 'player-avatar-preview player-avatar-frame w-12 h-12 rounded-full overflow-hidden flex items-center justify-center border-4 shrink-0',
+                        style: {
+                            backgroundColor: color || '#FF3B30',
+                            borderColor: color || '#FF3B30',
+                            boxShadow: '0 0 14px ' + (color || '#FF3B30') + ', 3px 3px 0 #000000',
+                            '--current-player-color': color || '#FF3B30'
+                        }
                     }, selfieInner),
                     h('button', {
                         type: 'button',
@@ -1495,7 +1726,7 @@ function MobileApp(props) {
                     className: '!py-1.5 !px-3 !text-sm'
                 }),
 
-                // 10 кружков цветов в 2 ряда по 5 штук
+                // 10 кружков цветов
                 h('div', { className: 'grid grid-cols-5 gap-1.5 justify-items-center w-full py-1' }, colorButtons),
 
                 // Блок победного клича
@@ -1534,7 +1765,6 @@ function MobileApp(props) {
     var effectiveVote = localVote !== null ? localVote : categoryVotes[playerId];
     var hasVoted = Boolean(effectiveVote);
 
-    // Учитывать ответ только если фаза строго question или answer_reveal
     var remoteAnswer = (phase === 'question' || phase === 'answer_reveal') && playerAnswers ? playerAnswers[playerId] : null;
     var effectiveAnswer = localAnswer !== null ? localAnswer : (remoteAnswer !== undefined ? remoteAnswer : null);
     var hasAnswered = effectiveAnswer !== null && effectiveAnswer !== undefined;
@@ -1628,11 +1858,35 @@ function MobileApp(props) {
             ) : h('p', null, 'Подсчет результатов...')
         );
     } else if (phase === 'finish') {
-        var isWinner = gameState.winnerId === playerId;
-        mobilePhaseContent = h('div', { className: 'text-center glass-card p-6 border-4 border-black' },
-            h('div', { className: 'text-6xl mb-3 animate-bounce' }, '🏆'),
-            h('h2', { className: 'text-2xl font-black mb-2 text-yellow-300' }, 'Игра окончена!'),
-            h('p', { className: 'text-xl font-black' }, isWinner ? 'ВЫ ПОБЕДИЛИ! 🎉' : 'Смотрите итоги на ТВ')
+        var standingsF = (gameState.standings && gameState.standings.length > 0)
+            ? gameState.standings
+            : getSortedStandings(players);
+        var currentStepF = gameState.finishStep || 0;
+        var podiumListF = standingsF.slice(0, 3);
+        var stepPlayer = podiumListF[currentStepF];
+        var isCurrentCelebrating = stepPlayer && stepPlayer.id === playerId;
+
+        var myPlace = 0;
+        for (var mi = 0; mi < standingsF.length; mi++) {
+            if (standingsF[mi].id === playerId) {
+                myPlace = mi + 1;
+                break;
+            }
+        }
+
+        var placeTitle = myPlace === 1 ? '1 МЕСТО — ЗОЛОТО! 🏆' : (myPlace === 2 ? '2 МЕСТО — СЕРЕБРО! 🥈' : (myPlace === 3 ? '3 МЕСТО — БРОНЗА! 🥉' : (myPlace + ' МЕСТО')));
+        var placeBadgeColor = myPlace === 1 ? 'bg-yellow-400 text-black' : (myPlace === 2 ? 'bg-slate-300 text-black' : (myPlace === 3 ? 'bg-amber-600 text-white' : 'bg-indigo-700 text-white'));
+
+        mobilePhaseContent = h('div', { className: 'text-center glass-card p-6 border-4 border-black space-y-4' },
+            h('div', { className: 'text-6xl animate-bounce' }, myPlace === 1 ? '👑' : (myPlace === 2 ? '🥈' : (myPlace === 3 ? '🥉' : '🎉'))),
+            h('h2', { className: 'text-2xl font-black text-yellow-300 uppercase' }, 'Церемония награждения!'),
+            h('div', { className: 'py-2 px-4 rounded-xl border-3 border-black text-xl font-black inline-block ' + placeBadgeColor }, placeTitle),
+            h('p', { className: 'text-lg font-bold' },
+                isCurrentCelebrating
+                    ? 'Ваш выход на экране ТВ! 🌟'
+                    : ('На экране ТВ: ' + (stepPlayer ? stepPlayer.name : ''))
+            ),
+            h('p', { className: 'text-xs text-yellow-100' }, 'Скоро начнется новая игра...')
         );
     }
 
