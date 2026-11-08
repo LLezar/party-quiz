@@ -63,6 +63,11 @@
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-round: 9999px;
+
+  /* Церемония награждения топ-3 */
+  --gold-glow: #ffd700;
+  --silver-glow: #e2e8f0;
+  --bronze-glow: #cd7f32;
 }
 
 /* ==========================================================================
@@ -514,7 +519,7 @@ p, span, label {
 }
 
 /* ==========================================================================
-   ФИГУРКИ ИГРОКОВ: РАЗДЕЛЕНИЕ КОНТЕЙНЕРА И ВНУТРЕННЕГО ТЕЛА
+   ФИГУРКИ ИГРОКОВ: СТРОГОЕ НАСЛЕДОВАНИЕ ЦВЕТА И АНИМАЦИИ
    ========================================================================== */
 
 .pawn-wrapper {
@@ -543,8 +548,9 @@ p, span, label {
   height: 74px;
   border-radius: var(--radius-round);
   border: 4px solid #000000;
-  box-shadow: 3px 3px 0px #000000, 0 0 12px var(--player-color, var(--accent-yellow));
-  background-color: var(--player-color, var(--accent-yellow));
+  box-shadow: 3px 3px 0px #000000, 0 0 14px var(--player-color, var(--accent-yellow)) !important;
+  background-color: var(--player-color, var(--accent-yellow)) !important;
+  border-color: #000000 !important;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -566,11 +572,11 @@ p, span, label {
   object-fit: cover;
 }
 
-/* Мультяшное туловище с толстой черной обводкой */
+/* Мультяшное туловище с толстой черной обводкой и цветом выбранного игрока */
 .pawn-body {
   width: 58px;
   height: 52px;
-  background-color: var(--player-color, var(--accent-yellow));
+  background-color: var(--player-color, var(--accent-yellow)) !important;
   border: 4px solid #000000;
   border-radius: 20px 20px 14px 14px;
   position: relative;
@@ -626,7 +632,7 @@ p, span, label {
   transform: translateY(-6px) scale(1.2);
   z-index: 999;
   transform-origin: bottom center;
-  box-shadow: 0 0 14px var(--player-color, #ffffff), 3px 3px 0 #000000;
+  box-shadow: 0 0 16px var(--player-color, #ffffff), 3px 3px 0 #000000 !important;
   animation: none;
 }
 
@@ -722,13 +728,14 @@ p, span, label {
   border: 3px solid #000000;
   cursor: pointer;
   box-shadow: 2px 2px 0px #000000;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 900;
   font-size: 0.95rem;
   color: #ffffff;
+  position: relative;
 }
 
 .color-select-btn:hover:not(:disabled) {
@@ -736,10 +743,12 @@ p, span, label {
   box-shadow: 4px 4px 0px #000000;
 }
 
+/* Исправленная яркая подсветка цвета игрока: не черная, а в цвет кнопки со свечением */
 .color-select-btn.selected {
-  border: 3.5px solid #ffffff !important;
-  box-shadow: 0 0 14px #ffffff, 3px 3px 0px #000000 !important;
-  transform: scale(1.15);
+  outline: 3px solid currentColor !important;
+  border: 3px solid #000000 !important;
+  box-shadow: 0 0 16px currentColor, 3px 3px 0px #000000 !important;
+  transform: scale(1.18);
   z-index: 5;
 }
 
@@ -750,6 +759,14 @@ p, span, label {
   transform: scale(0.9) !important;
   filter: grayscale(80%) !important;
   box-shadow: none !important;
+}
+
+/* Рамка превью аватарки игрока в мобильном лобби с подсветкой цветом */
+.player-avatar-frame,
+.player-avatar-preview {
+  border: 4px solid var(--current-player-color, #fde047) !important;
+  box-shadow: 0 0 16px var(--current-player-color, #fde047), 3px 3px 0 #000000 !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 /* Кнопка записи победного клича игрока */
@@ -1030,6 +1047,160 @@ input[type="text"]:focus {
     transform: scale(1.02);
     box-shadow: 4px 4px 0px #000000, 0 0 10px rgba(253, 224, 71, 0.4);
   }
+}
+
+/* ==========================================================================
+   ЦЕРЕМОНИЯ НАГРАЖДЕНИЯ ТОП-3 (ПОЛНОЭКРАННЫЙ ПЬЕДЕСТАЛ 12 СЕКУНД)
+   ========================================================================== */
+
+.winner-podium-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.podium-card {
+  width: 90vw;
+  max-width: 900px;
+  height: 85vh;
+  max-height: 850px;
+  border: 6px solid #000000;
+  border-radius: var(--radius-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+  padding: 24px 32px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 12px 12px 0px #000000;
+}
+
+/* 1 МЕСТО — ЗОЛОТОЙ СТИЛЬ */
+.podium-gold {
+  background: radial-gradient(circle at center, #ffd700 0%, #b45309 65%, #78350f 100%);
+  border-color: #000000;
+  box-shadow: 0 0 60px #ffd700, inset 0 0 30px #fef08a, 10px 10px 0px #000000;
+  animation: goldGlow 2.2s infinite alternate ease-in-out;
+}
+
+@keyframes goldGlow {
+  0% {
+    box-shadow: 0 0 40px #ffd700, inset 0 0 20px #fef08a, 10px 10px 0px #000000;
+    transform: scale(0.995);
+  }
+  100% {
+    box-shadow: 0 0 80px #ffe066, inset 0 0 45px #ffffff, 12px 12px 0px #000000;
+    transform: scale(1.008);
+  }
+}
+
+/* 2 МЕСТО — СЕРЕБРЯНЫЙ СТИЛЬ */
+.podium-silver {
+  background: radial-gradient(circle at center, #f1f5f9 0%, #94a3b8 65%, #334155 100%);
+  border-color: #000000;
+  box-shadow: 0 0 50px #cbd5e1, inset 0 0 25px #ffffff, 10px 10px 0px #000000;
+  animation: silverGlow 2.2s infinite alternate ease-in-out;
+}
+
+@keyframes silverGlow {
+  0% {
+    box-shadow: 0 0 35px #cbd5e1, inset 0 0 15px #f8fafc, 10px 10px 0px #000000;
+    transform: scale(0.995);
+  }
+  100% {
+    box-shadow: 0 0 70px #ffffff, inset 0 0 35px #ffffff, 12px 12px 0px #000000;
+    transform: scale(1.008);
+  }
+}
+
+/* 3 МЕСТО — БРОНЗОВЫЙ СТИЛЬ */
+.podium-bronze {
+  background: radial-gradient(circle at center, #ea580c 0%, #9a3412 65%, #431407 100%);
+  border-color: #000000;
+  box-shadow: 0 0 50px #ea580c, inset 0 0 25px #fdba74, 10px 10px 0px #000000;
+  animation: bronzeGlow 2.2s infinite alternate ease-in-out;
+}
+
+@keyframes bronzeGlow {
+  0% {
+    box-shadow: 0 0 35px #cd7f32, inset 0 0 15px #fdba74, 10px 10px 0px #000000;
+    transform: scale(0.995);
+  }
+  100% {
+    box-shadow: 0 0 70px #f97316, inset 0 0 35px #ffedd5, 12px 12px 0px #000000;
+    transform: scale(1.008);
+  }
+}
+
+/* Гигантская аватарка призера */
+.podium-avatar-giant {
+  width: clamp(220px, 42vh, 390px);
+  height: clamp(220px, 42vh, 390px);
+  border-radius: var(--radius-round);
+  border: 8px solid #000000;
+  box-shadow: 10px 10px 0px #000000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background-color: #ffffff;
+  transition: transform 0.3s ease;
+}
+
+.podium-avatar-giant img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Наградная лента с рангом */
+.podium-ribbon {
+  display: inline-block;
+  padding: 10px 32px;
+  background: #000000;
+  color: #ffffff;
+  border: 4px solid #ffffff;
+  border-radius: var(--radius-round);
+  font-size: clamp(1.4rem, 3.2vw, 2.4rem);
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  box-shadow: 6px 6px 0px #000000;
+}
+
+.podium-gold .podium-ribbon {
+  background: #000000;
+  color: #ffd700;
+  border-color: #ffd700;
+  box-shadow: 0 0 20px #ffd700, 6px 6px 0px #000000;
+}
+
+.podium-silver .podium-ribbon {
+  background: #000000;
+  color: #f1f5f9;
+  border-color: #cbd5e1;
+  box-shadow: 0 0 20px #cbd5e1, 6px 6px 0px #000000;
+}
+
+.podium-bronze .podium-ribbon {
+  background: #000000;
+  color: #fed7aa;
+  border-color: #fdba74;
+  box-shadow: 0 0 20px #f97316, 6px 6px 0px #000000;
 }
 
 /* ==========================================================================
