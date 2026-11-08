@@ -3,8 +3,6 @@
    PARTY QUIZ BOARD GAME — STYLESHEET (CARTOON EDITION)
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700;800&family=Nunito:wght@700;900&display=swap');
-
 :root {
   /* Палитра темы: яркий, сочный мультяшный стиль */
   --bg-primary: #1e1b4b;
@@ -81,8 +79,6 @@
 
 html, body {
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
   min-height: 100vh;
   min-height: 100dvh;
   min-height: -webkit-fill-available;
@@ -93,12 +89,11 @@ html, body {
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 #root {
   width: 100%;
-  height: 100%;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
@@ -131,14 +126,13 @@ p, span, label {
 
 .app-bg {
   width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
   background: 
     radial-gradient(circle at 15% 15%, #ff9ff3 0%, transparent 35%),
     radial-gradient(circle at 85% 85%, #54a0ff 0%, transparent 40%),
     radial-gradient(circle at 50% 50%, #4338ca 0%, #312e81 60%, #1e1b4b 100%);
   position: relative;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -190,24 +184,24 @@ p, span, label {
   overflow-y: auto;
 }
 
+/* Мобильный контейнер с гарантированным свободным скроллом */
 .mobile-container {
   width: 100%;
   max-width: 480px;
-  height: 100vh;
-  height: 100dvh;
   min-height: 100vh;
   min-height: 100dvh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   position: relative;
   z-index: 2;
-  gap: 12px;
-  padding: 14px 16px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 24px) + 20px);
-  padding-top: calc(env(safe-area-inset-top, 10px) + 8px);
+  gap: 10px;
+  padding: 10px 12px 28px 12px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 24px) + 24px);
+  padding-top: calc(env(safe-area-inset-top, 10px) + 6px);
   margin: 0 auto;
-  overflow-y: auto;
+  overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -437,7 +431,6 @@ p, span, label {
   height: 100% !important;
   max-width: 100vw;
   max-height: 100vh;
-  max-height: 100dvh;
   box-sizing: border-box;
   background-color: var(--board-bg);
   padding: clamp(8px, 1.5vw, 18px);
@@ -521,20 +514,27 @@ p, span, label {
 }
 
 /* ==========================================================================
-   ФИГУРКИ ИГРОКОВ (МУЛЬТЯШНЫЕ ТУЛОВИЩА И КРУГЛЫЕ ГОЛОВЫ)
+   ФИГУРКИ ИГРОКОВ: РАЗДЕЛЕНИЕ КОНТЕЙНЕРА И ВНУТРЕННЕГО ТЕЛА
    ========================================================================== */
 
 .pawn-wrapper {
   position: relative;
   width: 90px;
   height: 110px;
+  z-index: 20;
+  pointer-events: none;
+  transform-origin: bottom center;
+}
+
+/* Внутренний контейнер для независимого прыжка фишки */
+.pawn-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  z-index: 20;
-  pointer-events: auto;
-  transform-origin: bottom center;
+  width: 100%;
+  height: 100%;
+  position: relative;
 }
 
 /* Мультяшная голова с селфи */
@@ -557,7 +557,7 @@ p, span, label {
   justify-content: center;
   font-size: 2.2rem;
   overflow: hidden;
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .pawn-selfie-head img {
@@ -607,42 +607,33 @@ p, span, label {
    МУЛЬТЯШНЫЕ АНИМАЦИИ ПРЫЖКОВ И КАЧАНИЯ ГОЛОВЫ
    ========================================================================== */
 
+/* Безопасная мультяшная анимация прыжка фишки (-24px) */
 @keyframes pawnJump {
-  0% {
-    transform: translateY(0) scale(1, 1);
-  }
-  30% {
-    transform: translateY(12px) scale(1.3, 0.7);
-  }
-  50% {
-    transform: translateY(-70px) scale(0.85, 1.25) rotate(-6deg);
-  }
-  75% {
-    transform: translateY(-20px) scale(1.05, 0.95) rotate(4deg);
-  }
-  100% {
-    transform: translateY(0) scale(1, 1);
-  }
+  0%   { transform: translateY(0) scale(1, 1); }
+  30%  { transform: translateY(3px) scale(1.1, 0.9); }
+  50%  { transform: translateY(-24px) scale(0.95, 1.08); }
+  80%  { transform: translateY(-4px) scale(1.02, 0.98); }
+  100% { transform: translateY(0) scale(1, 1); }
 }
 
-.pawn-jumping,
-.pawn-walking {
-  animation: pawnJump 0.55s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
+.pawn-walking,
+.pawn-inner.pawn-walking {
+  animation: pawnJump 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
 }
 
-/* Увеличение головы в 4 раза при шаге: парит строго выше туловища без перекрытия тела */
+/* Аккуратное увеличение головы без отрыва от туловища */
 .pawn-walking .pawn-selfie-head {
-  transform: scale(3.8) translateY(-26px);
+  transform: translateY(-6px) scale(1.2);
   z-index: 999;
   transform-origin: bottom center;
-  box-shadow: 0 0 20px var(--player-color, #ffffff), 4px 4px 0 #000000;
+  box-shadow: 0 0 14px var(--player-color, #ffffff), 3px 3px 0 #000000;
   animation: none;
 }
 
 @keyframes headBob {
   0%, 100% { transform: rotate(0deg) translateY(-4%); }
-  25% { transform: rotate(10deg) translateY(-10%); }
-  75% { transform: rotate(-10deg) translateY(-2%); }
+  25% { transform: rotate(8deg) translateY(-8%); }
+  75% { transform: rotate(-8deg) translateY(-2%); }
 }
 
 @keyframes pulseGreen {
@@ -709,7 +700,7 @@ p, span, label {
   width: 100%;
   background: linear-gradient(90deg, #2ed573 0%, #ffa502 60%, #ff4757 100%);
   border-radius: var(--radius-round);
-  transition: width 0.1s linear;
+  transition: width 0.15s linear;
 }
 
 /* ==========================================================================
@@ -725,36 +716,36 @@ p, span, label {
 }
 
 .color-select-btn {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-round);
-  border: 3.5px solid #000000;
+  border: 3px solid #000000;
   cursor: pointer;
-  box-shadow: 3px 3px 0px #000000;
+  box-shadow: 2px 2px 0px #000000;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 900;
-  font-size: 1.2rem;
+  font-size: 0.95rem;
   color: #ffffff;
 }
 
 .color-select-btn:hover:not(:disabled) {
   transform: translate(-2px, -2px);
-  box-shadow: 5px 5px 0px #000000;
+  box-shadow: 4px 4px 0px #000000;
 }
 
 .color-select-btn.selected {
-  border: 4px solid #ffffff !important;
-  box-shadow: 0 0 18px #ffffff, 4px 4px 0px #000000 !important;
-  transform: scale(1.2);
+  border: 3.5px solid #ffffff !important;
+  box-shadow: 0 0 14px #ffffff, 3px 3px 0px #000000 !important;
+  transform: scale(1.15);
   z-index: 5;
 }
 
 .color-select-btn:disabled,
 .color-select-btn[disabled] {
-  opacity: 0.3 !important;
+  opacity: 0.25 !important;
   cursor: not-allowed !important;
   transform: scale(0.9) !important;
   filter: grayscale(80%) !important;
@@ -891,7 +882,7 @@ input[type="text"]:focus {
   overflow-wrap: break-word !important;
   hyphens: auto !important;
   -webkit-hyphens: auto !important;
-  font-size: clamp(1rem, 1.8vw, 1.45rem) !important;
+  font-size: clamp(1rem, 1.8vw, 1.4rem) !important;
   line-height: 1.2 !important;
   max-width: 100%;
   text-align: center;
@@ -963,7 +954,7 @@ input[type="text"]:focus {
   min-width: 38px;
   border-radius: var(--radius-md);
   border: 3px solid #000000;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 900;
   color: #000000;
   box-shadow: 2px 2px 0px #000000;
@@ -1280,18 +1271,6 @@ input[type="text"]:focus {
     gap: 0.5rem !important;
     padding: 0.75rem !important;
     box-sizing: border-box !important;
-}
-
-/* Адаптация высоты под старый iPad и мобильные браузеры */
-.mobile-container {
-    height: 100vh;
-    height: 100dvh;
-    max-height: 100vh;
-    display: -webkit-flex;
-    display: flex;
-    -webkit-flex-direction: column;
-    flex-direction: column;
-    box-sizing: border-box;
 }
 
 /* Компактное масштабирование для экранов планшетов (iPad 1024x768) */
