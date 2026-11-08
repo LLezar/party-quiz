@@ -319,9 +319,7 @@ function StartScreen() {
 
     useEffect(function() {
         StartMusicManager.play();
-        return function() {
-            // Музыка продолжает играть, если переходим в лобби
-        };
+        return function() {};
     }, []);
 
     var handleHost = useCallback(function() {
@@ -492,9 +490,13 @@ function TVApp(props) {
             }
         }
 
+        if (window.GameSync && window.GameSync.clearAnswers) {
+            window.GameSync.clearAnswers(roomId);
+        }
+
         window.GameSync.updateState({
             phase: 'category_vote',
-            timerDuration: 10,
+            timerDuration: 60,
             timerKey: 'vote_' + Date.now(),
             categoriesToVote: categories,
             categoryVotes: {},
@@ -504,7 +506,7 @@ function TVApp(props) {
             activeQuestion: null,
             roundMoves: {}
         });
-    }, []);
+    }, [roomId]);
 
     useEffect(function() {
         startNewRoundRef.current = startNewRound;
@@ -632,9 +634,13 @@ function TVApp(props) {
             prevPlayed.push(chosenCat);
         }
 
+        if (window.GameSync && window.GameSync.clearAnswers) {
+            window.GameSync.clearAnswers(roomId);
+        }
+
         window.GameSync.updateState({
             phase: 'question',
-            timerDuration: 15,
+            timerDuration: 30,
             timerKey: 'q_0_' + Date.now(),
             playedCategories: prevPlayed,
             categoryVotes: {},
@@ -643,7 +649,7 @@ function TVApp(props) {
             currentQuestions: questions,
             activeQuestion: questions[0]
         });
-    }, []);
+    }, [roomId]);
 
     function executeRoundMovement() {
         setIsAnimatingRoundMoves(true);
@@ -761,9 +767,12 @@ function TVApp(props) {
         nextPhaseTimeoutRef.current = setTimeout(function() {
             var nextQIndex = currentQIndex + 1;
             if (nextQIndex < 4) {
+                if (window.GameSync && window.GameSync.clearAnswers) {
+                    window.GameSync.clearAnswers(roomId);
+                }
                 window.GameSync.updateState({
                     phase: 'question',
-                    timerDuration: 15,
+                    timerDuration: 30,
                     timerKey: 'q_' + nextQIndex + '_' + Date.now(),
                     currentQuestionIndex: nextQIndex,
                     activeQuestion: questionsList[nextQIndex],
@@ -772,28 +781,30 @@ function TVApp(props) {
             } else {
                 executeRoundMovement();
             }
-        }, 5000);
-    }, []);
+        }, 6000);
+    }, [roomId]);
 
-    // Проверка завершения фаз по таймеру и ответам всех игроков
+    // Проверка завершения фаз по таймеру и ответам игроков с защитой от фантомных срабатываний
     useEffect(function() {
         if (!gameState) return;
         var phase = gameState.phase;
         var players = gameState.players || {};
         var categoryVotes = gameState.categoryVotes || {};
         var playerAnswers = gameState.playerAnswers || {};
-        var isTimeUp = (gameState.timerDuration > 0 && timeLeft <= 0);
+
+        var timeInPhase = Date.now() - phaseStartLocalRef.current;
+        var isTimeUp = (gameState.timerDuration > 0 && timeInPhase >= (gameState.timerDuration * 1000));
 
         if (phase === 'category_vote') {
             var numPlayers = Object.keys(players).length;
             var numVotes = Object.keys(categoryVotes).length;
-            if (isTimeUp || (numPlayers > 0 && numVotes >= numPlayers)) {
+            if (isTimeUp || (numPlayers > 0 && numVotes >= numPlayers && timeInPhase >= 1500)) {
                 if (!phaseLockRef.current) handleVoteFinished();
             }
         } else if (phase === 'question') {
             var numPlayersQ = Object.keys(players).length;
             var numAnswersQ = Object.keys(playerAnswers).length;
-            if (isTimeUp || (numPlayersQ > 0 && numAnswersQ >= numPlayersQ)) {
+            if (isTimeUp || (numPlayersQ > 0 && numAnswersQ >= numPlayersQ && timeInPhase >= 1500)) {
                 if (!phaseLockRef.current) handleShowResultPhase();
             }
         } else if (phase === 'round_summary') {
@@ -970,7 +981,7 @@ function TVApp(props) {
             h('div', { className: 'timer-track mb-4' },
                 h('div', {
                     className: 'timer-bar',
-                    style: { width: ((timeLeft / 10) * 100) + '%' }
+                    style: { width: ((timeLeft / 60) * 100) + '%' }
                 })
             ),
             h('div', { className: 'categories-grid-6 mb-3' }, categoryCards),
@@ -1208,11 +1219,18 @@ function MobileApp(props) {
         };
     }, [roomId, dbUrl, playerId]);
 
+    // Гарантированный сброс выбранных ответов и голосов при смене фазы или вопроса
     useEffect(function() {
         if (!gameState) return;
         if (gameState.phase !== 'category_vote') setLocalVote(null);
-        if (gameState.phase !== 'question') setLocalAnswer(null);
-    }, [gameState && gameState.phase, gameState && gameState.timerKey]);
+        if (gameState.phase !== 'question') {
+            setLocalAnswer(null);
+        }
+    }, [gameState && gameState.phase]);
+
+    useEffect(function() {
+        setLocalAnswer(null);
+    }, [gameState && gameState.timerKey, gameState && gameState.currentQuestionIndex]);
 
     // Локальный таймер телефона
     useEffect(function() {
@@ -1380,7 +1398,7 @@ function MobileApp(props) {
     }
 
     function sendAnswer(optionIndex) {
-        if (!playerId || !gameState || gameState.phase !== 'question' || localAnswer !== null) return;
+        if (!playerId || !gameState || gameState.phase !== 'question' || hasAnswered) return;
         setLocalAnswer(optionIndex);
         window.GameSync.patchAnswer(roomId, playerId, optionIndex);
     }
@@ -1426,11 +1444,12 @@ function MobileApp(props) {
                 className: 'primary-btn w-full !py-2 text-xs !bg-amber-400'
             }, isRecordingCheer ? ('🔴 Идет запись (' + cheerCountdown + 'с)') : '🎤 Записать победный клич');
         } else {
-            cheerControls = h('div', { className: 'flex gap-2 w-full' },
+            // Кнопка перезаписи вертикально под кнопкой прослушивания, чтобы не убегать за правый край
+            cheerControls = h('div', { className: 'flex flex-col gap-2 w-full' },
                 h('button', {
                     type: 'button',
                     onClick: playCheerPreview,
-                    className: 'primary-btn flex-1 !py-1.5 text-xs !bg-emerald-500'
+                    className: 'primary-btn w-full !py-2 text-xs !bg-emerald-500'
                 }, '▶️ Прослушать'),
                 h('button', {
                     type: 'button',
@@ -1438,7 +1457,7 @@ function MobileApp(props) {
                         setCheerAudio(null);
                         startRecordingCheer();
                     },
-                    className: 'primary-btn flex-1 !py-1.5 text-xs !bg-gray-600'
+                    className: 'primary-btn w-full !py-2 text-xs !bg-gray-600'
                 }, '🔄 Перезаписать клич')
             );
         }
@@ -1515,10 +1534,11 @@ function MobileApp(props) {
     var effectiveVote = localVote !== null ? localVote : categoryVotes[playerId];
     var hasVoted = Boolean(effectiveVote);
 
-    var effectiveAnswer = localAnswer !== null ? localAnswer : playerAnswers[playerId];
-    var hasAnswered = effectiveAnswer !== undefined && effectiveAnswer !== null;
+    // Учитывать ответ только если фаза строго question или answer_reveal
+    var remoteAnswer = (phase === 'question' || phase === 'answer_reveal') && playerAnswers ? playerAnswers[playerId] : null;
+    var effectiveAnswer = localAnswer !== null ? localAnswer : (remoteAnswer !== undefined ? remoteAnswer : null);
+    var hasAnswered = effectiveAnswer !== null && effectiveAnswer !== undefined;
 
-    // Гарантированный показ вариантов ответов из activeQuestion или currentQuestions
     var currentQ = gameState.activeQuestion || (gameState.currentQuestions && gameState.currentQuestions[currentQuestionIndex]) || null;
 
     var myHead = isSafeImageSrc(myPlayer.selfie)
