@@ -5,20 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Пати Квиз</title>
     
-    <!-- Статический TailwindCSS v2.2.19 (без JS-рантайма, 100% совместимо со Smart TV webOS, старыми iPad и современными телефонами) -->
+    <!-- Неблокирующее подключение шрифтов Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700;800&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+
+    <!-- Статический TailwindCSS v2.2.19 (100% совместимо со Smart TV webOS и планшетами) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     
-    <!-- Основная таблица стилей -->
-    <link rel="stylesheet" href="styles.css?v=4">
+    <!-- Основная таблица стилей с версией v=5 -->
+    <link rel="stylesheet" href="styles.css?v=5">
     
-    <!-- Кроссбраузерный патч разметки для старых iPad (Safari 12-14), LG webOS и Tailwind v3 утилит -->
+    <!-- Кроссбраузерный патч разметки -->
     <style>
-        /* Исправление inset-0 и позиционирования фишек в Grid для старых Safari и Smart TV */
         .inset-0 { top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important; }
         .shrink-0 { -webkit-flex-shrink: 0 !important; flex-shrink: 0 !important; }
         .pawn-wrapper { position: relative !important; width: 100% !important; height: 100% !important; }
         
-        /* Оверлей модальных окон поверх игрового поля на ТВ и iPad */
         .tv-modal-overlay {
             position: relative;
             z-index: 20;
@@ -38,7 +41,6 @@
             box-sizing: border-box;
         }
 
-        /* Сетка 6 категорий (3 колонки на ТВ/iPad) */
         .categories-grid-6 {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -47,7 +49,6 @@
             width: 100%;
         }
 
-        /* Настольное поле 5x5 */
         .board-grid {
             display: grid !important;
             grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
@@ -58,11 +59,10 @@
             box-sizing: border-box !important;
         }
 
-        /* Адаптация высоты под старый iPad и мобильные браузеры */
         .mobile-container {
-            height: 100vh;
-            height: 100dvh;
-            max-height: 100vh;
+            min-height: 100vh;
+            min-height: 100dvh;
+            height: 100%;
             display: -webkit-flex;
             display: flex;
             -webkit-flex-direction: column;
@@ -70,7 +70,7 @@
             box-sizing: border-box;
         }
 
-        /* Поддержка классов Tailwind v3 в статическом Tailwind v2 */
+        /* Цвета Tailwind v3 для v2 */
         .bg-black\/85 { background-color: rgba(0, 0, 0, 0.85) !important; }
         .bg-black\/75 { background-color: rgba(0, 0, 0, 0.75) !important; }
         .bg-black\/50 { background-color: rgba(0, 0, 0, 0.5) !important; }
@@ -92,64 +92,28 @@
         .bg-slate-300 { background-color: #cbd5e1 !important; }
         .bg-emerald-500 { background-color: #10b981 !important; }
         .border-3 { border-width: 3px !important; }
-        .min-w-\[240px\] { min-width: 240px !important; }
-        .min-h-\[240px\] { min-height: 240px !important; }
-        .min-h-\[140px\] { min-height: 140px !important; }
-        .min-h-\[120px\] { min-height: 120px !important; }
-        .min-h-\[90px\] { min-height: 90px !important; }
-        .min-h-\[70px\] { min-height: 70px !important; }
-        .min-h-\[36px\] { min-height: 36px !important; }
-        .min-h-\[32px\] { min-height: 32px !important; }
-        .max-w-\[80px\] { max-width: 80px !important; }
-        .max-h-\[90vh\] { max-height: 90vh !important; }
-        .max-h-\[96dvh\] { max-height: 94vh !important; }
-        .\!p-4 { padding: 1rem !important; }
-        .\!py-2 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
-        .\!py-2\.5 { padding-top: 0.625rem !important; padding-bottom: 0.625rem !important; }
-        .\!px-3 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
-        .\!px-4 { padding-left: 1rem !important; padding-right: 1rem !important; }
-        .\!mt-2 { margin-top: 0.5rem !important; }
-        .\!text-base { font-size: 1rem !important; }
-        .\!rounded-2xl { border-radius: 1rem !important; }
-        .\!cursor-default { cursor: default !important; }
-        .\!bg-gray-500 { background-color: #6b7280 !important; }
-        .\!bg-gray-600 { background-color: #4b5563 !important; }
-        .\!bg-red-600 { background-color: #dc2626 !important; }
-        .\!bg-amber-400 { background-color: #fbbf24 !important; }
-        .\!bg-emerald-500 { background-color: #10b981 !important; }
-        .\!bg-yellow-400 { background-color: #facc15 !important; }
-        .\!text-black { color: #000000 !important; }
-        .\!border-black { border-color: #000000 !important; }
 
-        /* Фоллбэк для flex gap на старых iPad (iOS 12-14) */
         .flex.gap-1\.5 > * + * { margin-left: 0.375rem; }
         .flex.gap-2 > * + * { margin-left: 0.5rem; }
         .flex.gap-3 > * + * { margin-left: 0.75rem; }
         .flex.gap-4 > * + * { margin-left: 1rem; }
         .flex-col.gap-2 > * + * { margin-left: 0 !important; margin-top: 0.5rem; }
-        
-        /* Компактное масштабирование для экранов планшетов (iPad 1024x768) */
-        @media (max-height: 820px) {
-            .glass-card { padding: 1rem !important; }
-            .tv-modal-overlay h2 { font-size: 1.75rem !important; margin-bottom: 0.5rem !important; }
-            .quiz-btn { min-height: 3.25rem !important; padding: 0.5rem 0.75rem !important; }
-        }
     </style>
     
     <!-- Подключение библиотеки для QR-кода -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
     
-    <!-- Подключение UMD-сборок React 18 и ReactDOM 18 (БЕЗ Babel, мгновенный старт на любых устройствах) -->
+    <!-- Подключение React 18 UMD (БЕЗ Babel, чистый ES5-рантайм) -->
     <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 </head>
-<body class="bg-gray-900 text-white overflow-hidden m-0 p-0">
+<body class="bg-gray-900 text-white overflow-x-hidden m-0 p-0">
     <!-- Корневой контейнер приложения -->
-    <div id="root" class="app-bg h-screen w-screen font-sans overflow-hidden"></div>
+    <div id="root" class="app-bg min-h-screen w-screen font-sans overflow-x-hidden"></div>
 
-    <!-- Подключение чистых ES5-скриптов напрямую без компиляции в браузере -->
-    <script src="questions.js?v=4"></script>
-    <script src="sync.js?v=4"></script>
-    <script src="app.js?v=4"></script>
+    <!-- Подключение чистых ES5-скриптов с обновленной версией ?v=5 -->
+    <script src="questions.js?v=5"></script>
+    <script src="sync.js?v=5"></script>
+    <script src="app.js?v=5"></script>
 </body>
 </html>
