@@ -619,14 +619,15 @@ window.captureSelfie = function(videoElement, customSize, customQuality) {
 
         try {
             var canvas = document.createElement('canvas');
-            var targetSize = (customSize !== undefined && customSize !== null) ? customSize : 360;
-            var quality = (customQuality !== undefined && customQuality !== null) ? customQuality : 0.85;
+            var targetSize = (customSize !== undefined && customSize !== null) ? customSize : 720;
+            var quality = (customQuality !== undefined && customQuality !== null) ? customQuality : 0.92;
 
             canvas.width = targetSize;
             canvas.height = targetSize;
             var ctx = canvas.getContext('2d');
 
             ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             var minDim = Math.min(videoWidth, videoHeight);
             var startX = (videoWidth - minDim) / 2;
             var startY = (videoHeight - minDim) / 2;

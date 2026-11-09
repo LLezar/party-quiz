@@ -7,6 +7,8 @@ var useRef = React.useRef;
 var useCallback = React.useCallback;
 var useMemo = React.useMemo;
 
+var DEFAULT_FIREBASE_DB_URL = 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app';
+
 var safeStorage = {
     getItem: function(key) {
         try {
@@ -223,7 +225,7 @@ function CameraModal(props) {
             setIsVideoReady(false);
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                 navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } }
+                    video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } }
                 }).then(function(s) {
                     if (isCancelled) {
                         s.getTracks().forEach(function(track) { track.stop(); });
@@ -258,7 +260,7 @@ function CameraModal(props) {
         if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) return;
 
         if (window.captureSelfie) {
-            window.captureSelfie(videoEl, 360, 0.85).then(function(base64) {
+            window.captureSelfie(videoEl, 720, 0.92).then(function(base64) {
                 setPhoto(base64);
             });
         }
@@ -308,27 +310,17 @@ function CameraModal(props) {
 }
 
 function StartScreen() {
-    var storedUrl = safeStorage.getItem('firebaseDbUrl');
-    var defaultUrl = 'https://quiz-c032b-default-rtdb.europe-west1.firebasedatabase.app';
-    var dbUrlState = useState(storedUrl || defaultUrl);
-    var dbUrl = dbUrlState[0];
-    var setDbUrl = dbUrlState[1];
-
     var countdownState = useState(30);
     var countdown = countdownState[0];
     var setCountdown = countdownState[1];
 
-    useEffect(function() {
-        StartMusicManager.play();
-        return function() {};
-    }, []);
-
     var handleHost = useCallback(function() {
-        safeStorage.setItem('firebaseDbUrl', dbUrl);
+        var effectiveDbUrl = safeStorage.getItem('firebaseDbUrl') || DEFAULT_FIREBASE_DB_URL;
+        safeStorage.setItem('firebaseDbUrl', effectiveDbUrl);
         var room = generateRoomId();
         var baseUrl = window.location.origin + window.location.pathname;
-        window.location.href = baseUrl + '?role=host&room=' + room + '&db=' + encodeURIComponent(dbUrl);
-    }, [dbUrl]);
+        window.location.href = baseUrl + '?role=host&room=' + room + '&db=' + encodeURIComponent(effectiveDbUrl);
+    }, []);
 
     useEffect(function() {
         var timer = setInterval(function() {
@@ -345,12 +337,12 @@ function StartScreen() {
     }, [handleHost]);
 
     function handlePlayer() {
-        StartMusicManager.stop();
-        safeStorage.setItem('firebaseDbUrl', dbUrl);
+        var effectiveDbUrl = safeStorage.getItem('firebaseDbUrl') || DEFAULT_FIREBASE_DB_URL;
+        safeStorage.setItem('firebaseDbUrl', effectiveDbUrl);
         var room = prompt('Введите 4-значный код комнаты:');
         if (room) {
             var baseUrl = window.location.origin + window.location.pathname;
-            window.location.href = baseUrl + '?role=player&room=' + room.trim().toUpperCase() + '&db=' + encodeURIComponent(dbUrl);
+            window.location.href = baseUrl + '?role=player&room=' + room.trim().toUpperCase() + '&db=' + encodeURIComponent(effectiveDbUrl);
         }
     }
 
@@ -359,15 +351,6 @@ function StartScreen() {
             h('h1', { className: 'text-4xl md:text-5xl font-black mb-2 text-yellow-300' }, 'Пати Квиз'),
             h('div', { className: 'text-xs font-bold text-yellow-300 bg-black/40 border-2 border-black px-3 py-1.5 rounded-full inline-block' },
                 'Авто-создание ТВ через: ' + countdown + ' сек...'
-            ),
-            h('div', { className: 'text-left' },
-                h('label', { className: 'block text-xs mb-1 text-white font-bold' }, 'Firebase DB URL:'),
-                h('input', {
-                    type: 'text',
-                    value: dbUrl,
-                    onChange: function(e) { setDbUrl(e.target.value); },
-                    className: 'w-full p-2.5 rounded-xl bg-white border-2 border-black text-black font-bold outline-none text-sm'
-                })
             ),
             h('div', { className: 'space-y-3 pt-2' },
                 h('button', {
@@ -385,7 +368,7 @@ function StartScreen() {
 
 function TVApp(props) {
     var roomId = props.roomId;
-    var dbUrl = props.dbUrl;
+    var dbUrl = props.dbUrl || DEFAULT_FIREBASE_DB_URL;
 
     var gameStateState = useState(null);
     var gameState = gameStateState[0];
@@ -1117,8 +1100,7 @@ function TVApp(props) {
                     key: 'lobby-qr-box',
                     ref: qrRef,
                     className: 'bg-white p-3 rounded-2xl inline-flex border-4 border-black items-center justify-center shadow-lg'
-                }),
-                h('div', { className: 'mt-2 text-xs text-yellow-300 font-mono break-all' }, joinUrl)
+                })
             ),
             playersList.length >= 1 ? h('div', {
                 className: 'text-sm font-bold text-black bg-yellow-300 border-2 border-black px-4 py-1.5 rounded-xl mb-4 inline-block animate-pulse'
@@ -1217,7 +1199,7 @@ function TVApp(props) {
 
         var imageElement = null;
         if (currentQ.imageUrl && isSafeImageSrc(currentQ.imageUrl)) {
-            imageElement = h('div', { className: 'question-image-container mb-3 flex justify-center w-full' },
+            imageElement = h('div', { className: 'question-image-container' },
                 h('img', {
                     src: currentQ.imageUrl,
                     alt: 'question',
@@ -1387,7 +1369,7 @@ function TVApp(props) {
 
 function MobileApp(props) {
     var roomId = props.roomId;
-    var dbUrl = props.dbUrl;
+    var dbUrl = props.dbUrl || DEFAULT_FIREBASE_DB_URL;
 
     var gameStateState = useState(null);
     var gameState = gameStateState[0];
@@ -1958,7 +1940,7 @@ function App() {
 
     var role = null;
     var room = null;
-    var db = '';
+    var db = DEFAULT_FIREBASE_DB_URL;
 
     if (params) {
         role = params.get('role');
