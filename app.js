@@ -180,9 +180,9 @@ function Pawn(props) {
             h('div', {
                 className: 'pawn-selfie-head',
                 style: {
+                    border: '4px solid ' + playerColor,
                     backgroundColor: playerColor,
-                    borderColor: playerColor,
-                    boxShadow: '0 0 12px ' + playerColor + ', 3px 3px 0 #000000',
+                    boxShadow: '0 0 14px ' + playerColor + ', 3px 3px 0 #000000',
                     '--player-color': playerColor
                 }
             }, headContent),
@@ -258,7 +258,7 @@ function CameraModal(props) {
         if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) return;
 
         if (window.captureSelfie) {
-            window.captureSelfie(videoEl).then(function(base64) {
+            window.captureSelfie(videoEl, 360, 0.85).then(function(base64) {
                 setPhoto(base64);
             });
         }
@@ -527,6 +527,7 @@ function TVApp(props) {
                 timerKey: '',
                 categoriesToVote: [],
                 playedCategories: [],
+                playedQuestionIds: [],
                 categoryVotes: {},
                 playerAnswers: {},
                 currentRound: 0,
@@ -728,8 +729,12 @@ function TVApp(props) {
             chosenCat = categoriesToVoteList[0].id;
         }
 
-        var questions = window.QuestionBank.getQuestions(chosenCat, 4);
+        var prevPlayedQIds = (syncState.playedQuestionIds || []).slice();
+        var questions = window.QuestionBank.getQuestions(chosenCat, 4, prevPlayedQIds);
         currentQuestionsRef.current = questions;
+
+        var newQIds = questions.map(function(q) { return q.id; });
+        var updatedPlayedQIds = prevPlayedQIds.concat(newQIds);
 
         var prevPlayed = (syncState.playedCategories || []).slice();
         if (prevPlayed.indexOf(chosenCat) === -1) {
@@ -745,6 +750,7 @@ function TVApp(props) {
             timerDuration: 30,
             timerKey: 'q_0_' + Date.now(),
             playedCategories: prevPlayed,
+            playedQuestionIds: updatedPlayedQIds,
             categoryVotes: {},
             playerAnswers: {},
             currentQuestionIndex: 0,
@@ -983,6 +989,7 @@ function TVApp(props) {
                             timerKey: '',
                             categoriesToVote: [],
                             playedCategories: [],
+                            playedQuestionIds: [],
                             categoryVotes: {},
                             playerAnswers: {},
                             currentRound: 0,
@@ -1081,14 +1088,20 @@ function TVApp(props) {
         var lobbyAvatars = playersList.length === 0 
             ? h('p', { className: 'text-yellow-100' }, 'Ожидание игроков с телефона...')
             : playersList.map(function(p) {
+                var pCol = p.color || '#FF3B30';
                 var avatarInner = isSafeImageSrc(p.selfie)
                     ? h('img', { src: p.selfie, className: 'w-full h-full object-cover' })
                     : h('span', { className: 'text-3xl text-black' }, p.selfie || '👤');
 
                 return h('div', { key: p.id, className: 'flex flex-col items-center' },
                     h('div', {
-                        className: 'w-16 h-16 rounded-full overflow-hidden border-4 border-black mb-2 flex items-center justify-center shadow-lg',
-                        style: { backgroundColor: p.color || '#FF3B30' }
+                        className: 'w-16 h-16 rounded-full overflow-hidden mb-2 flex items-center justify-center player-avatar-frame',
+                        style: {
+                            backgroundColor: pCol,
+                            border: '4px solid ' + pCol,
+                            boxShadow: '0 0 14px ' + pCol + ', 3px 3px 0 #000000',
+                            '--current-player-color': pCol
+                        }
                     }, avatarInner),
                     h('span', { className: 'font-bold text-sm max-w-[80px] truncate' }, p.name)
                 );
@@ -1122,14 +1135,20 @@ function TVApp(props) {
         var categoryCards = (categoriesToVote || []).map(function(cat, idx) {
             var voters = playersList.filter(function(p) { return categoryVotes[p.id] === cat.id; });
             var voterBadges = voters.map(function(p) {
+                var pCol = p.color || '#FF3B30';
                 var head = isSafeImageSrc(p.selfie)
                     ? h('img', { src: p.selfie, className: 'w-full h-full object-cover' })
                     : h('span', { className: 'text-xs font-bold text-black' }, p.selfie || '👤');
 
                 return h('div', {
                     key: p.id,
-                    className: 'w-8 h-8 rounded-full border-2 border-black overflow-hidden flex items-center justify-center shadow-md',
-                    style: { backgroundColor: p.color || '#FF3B30' }
+                    className: 'w-8 h-8 rounded-full overflow-hidden flex items-center justify-center player-avatar-frame',
+                    style: {
+                        backgroundColor: pCol,
+                        border: '2.5px solid ' + pCol,
+                        boxShadow: '0 0 8px ' + pCol + ', 2px 2px 0 #000000',
+                        '--current-player-color': pCol
+                    }
                 }, head);
             });
 
@@ -1165,14 +1184,20 @@ function TVApp(props) {
             var badges = null;
             if (isResultPhase) {
                 var badgeItems = playersChosenThis.map(function(p) {
+                    var pCol = p.color || '#FF3B30';
                     var head = isSafeImageSrc(p.selfie)
                         ? h('img', { src: p.selfie, className: 'w-full h-full object-cover' })
                         : h('span', { className: 'text-base text-black font-bold' }, p.selfie || '👤');
 
                     return h('div', {
                         key: p.id,
-                        className: 'w-9 h-9 rounded-full border-2 border-black overflow-hidden flex items-center justify-center shadow-lg',
-                        style: { backgroundColor: p.color || '#FF3B30' }
+                        className: 'w-9 h-9 rounded-full overflow-hidden flex items-center justify-center player-avatar-frame',
+                        style: {
+                            backgroundColor: pCol,
+                            border: '3px solid ' + pCol,
+                            boxShadow: '0 0 10px ' + pCol + ', 2px 2px 0 #000000',
+                            '--current-player-color': pCol
+                        }
                     }, head);
                 });
                 badges = h('div', { className: 'absolute -bottom-4 left-1/2 -translate-x-1/2 flex gap-1 z-30' }, badgeItems);
@@ -1192,11 +1217,11 @@ function TVApp(props) {
 
         var imageElement = null;
         if (currentQ.imageUrl && isSafeImageSrc(currentQ.imageUrl)) {
-            imageElement = h('div', { className: 'mb-4 flex justify-center' },
+            imageElement = h('div', { className: 'question-image-container mb-3 flex justify-center w-full' },
                 h('img', {
                     src: currentQ.imageUrl,
                     alt: 'question',
-                    className: 'max-h-44 max-w-full rounded-2xl border-4 border-black object-contain bg-black/40 shadow-xl'
+                    className: 'question-image-large'
                 })
             );
         }
@@ -1223,6 +1248,7 @@ function TVApp(props) {
             var badgeClass = moveData.rank === 1 ? 'bg-yellow-400 text-black' : (moveData.rank === 2 ? 'bg-slate-300 text-black' : (moveData.rank === 3 ? 'bg-amber-600 text-white' : 'bg-indigo-700 text-white'));
             var stepsText = '+' + moveData.stepsGained + ' ' + (moveData.stepsGained === 1 ? 'шаг' : 'шага');
 
+            var pCol = p.color || '#FF3B30';
             var head = isSafeImageSrc(p.selfie)
                 ? h('img', { src: p.selfie, className: 'w-full h-full object-cover' })
                 : h('span', { className: 'text-2xl text-black' }, p.selfie || '👤');
@@ -1234,8 +1260,13 @@ function TVApp(props) {
                 h('div', { className: 'flex items-center gap-3' },
                     h('div', { className: 'round-summary-badge ' + badgeClass }, moveData.rank),
                     h('div', {
-                        className: 'w-10 h-10 rounded-full border-3 border-black overflow-hidden flex items-center justify-center',
-                        style: { backgroundColor: p.color || '#FF3B30' }
+                        className: 'w-10 h-10 rounded-full overflow-hidden flex items-center justify-center player-avatar-frame',
+                        style: {
+                            backgroundColor: pCol,
+                            border: '3px solid ' + pCol,
+                            boxShadow: '0 0 10px ' + pCol + ', 2px 2px 0 #000000',
+                            '--current-player-color': pCol
+                        }
                     }, head),
                     h('div', { className: 'text-left' },
                         h('div', { className: 'font-black text-lg text-white' }, p.name),
@@ -1291,6 +1322,8 @@ function TVApp(props) {
                 : h('span', { className: 'text-8xl md:text-9xl text-black select-none' }, pItem.selfie || '👤');
         }
 
+        var playerHex = (pItem && pItem.color) || rankColorHex;
+
         phaseContent = h('div', {
             key: 'finish-overlay-' + currentStep,
             className: 'winner-podium-overlay'
@@ -1298,8 +1331,8 @@ function TVApp(props) {
             h('div', {
                 className: 'podium-card ' + stepClass + ' glass-card flex flex-col items-center justify-between p-6 md:p-8 relative overflow-hidden text-center',
                 style: {
-                    borderColor: rankColorHex,
-                    boxShadow: '0 0 50px ' + rankColorHex + ', 8px 8px 0 #000000',
+                    borderColor: playerHex,
+                    boxShadow: '0 0 50px ' + playerHex + ', 8px 8px 0 #000000',
                     width: '90vw',
                     maxWidth: '900px',
                     height: '85vh',
@@ -1313,15 +1346,14 @@ function TVApp(props) {
                 h('div', {
                     className: 'podium-avatar-giant rounded-full overflow-hidden flex items-center justify-center my-auto transition-transform transform hover:scale-105',
                     style: {
-                        backgroundColor: (pItem && pItem.color) || '#FF3B30',
-                        borderColor: '#000000',
-                        borderWidth: '8px',
-                        borderStyle: 'solid',
-                        boxShadow: '0 0 35px ' + rankColorHex + ', 8px 8px 0 #000000',
+                        backgroundColor: playerHex,
+                        border: '8px solid ' + playerHex,
+                        boxShadow: '0 0 35px ' + playerHex + ', 8px 8px 0 #000000',
                         width: 'clamp(220px, 42vh, 400px)',
                         height: 'clamp(220px, 42vh, 400px)',
                         minWidth: 'clamp(220px, 42vh, 400px)',
-                        minHeight: 'clamp(220px, 42vh, 400px)'
+                        minHeight: 'clamp(220px, 42vh, 400px)',
+                        '--current-player-color': playerHex
                     }
                 }, avatarContent),
 
@@ -1688,6 +1720,8 @@ function MobileApp(props) {
             );
         }
 
+        var activeColor = color || '#FF3B30';
+
         return h('div', { className: 'mobile-container' },
             h(CameraModal, {
                 isOpen: showCameraModal,
@@ -1697,15 +1731,16 @@ function MobileApp(props) {
             h('div', { className: 'glass-card w-full max-w-sm !p-3.5 space-y-2.5 my-auto' },
                 h('h2', { className: 'text-xl font-black text-center text-yellow-300' }, 'Вход в игру'),
                 
-                // Ряд: Аватарка с подсветкой выбранным цветом + Кнопка селфи
+                // Ряд: Аватарка с яркой подсветкой выбранным цветом + Кнопка селфи
                 h('div', { className: 'flex items-center gap-3 w-full bg-black/30 p-2 rounded-xl border border-black' },
                     h('div', {
-                        className: 'player-avatar-preview player-avatar-frame w-12 h-12 rounded-full overflow-hidden flex items-center justify-center border-4 shrink-0',
+                        className: 'player-avatar-preview player-avatar-frame w-12 h-12 rounded-full overflow-hidden flex items-center justify-center shrink-0',
                         style: {
-                            backgroundColor: color || '#FF3B30',
-                            borderColor: color || '#FF3B30',
-                            boxShadow: '0 0 14px ' + (color || '#FF3B30') + ', 3px 3px 0 #000000',
-                            '--current-player-color': color || '#FF3B30'
+                            backgroundColor: activeColor,
+                            border: '4px solid ' + activeColor,
+                            borderColor: activeColor,
+                            boxShadow: '0 0 16px ' + activeColor + ', 3px 3px 0 #000000',
+                            '--current-player-color': activeColor
                         }
                     }, selfieInner),
                     h('button', {
@@ -1774,6 +1809,8 @@ function MobileApp(props) {
     var myHead = isSafeImageSrc(myPlayer.selfie)
         ? h('img', { src: myPlayer.selfie, className: 'w-full h-full object-cover' })
         : h('span', { className: 'text-xl text-black' }, myPlayer.selfie || '👤');
+
+    var myCol = myPlayer.color || '#FF3B30';
 
     var mobilePhaseContent = null;
 
@@ -1894,8 +1931,13 @@ function MobileApp(props) {
         h('div', { className: 'glass-card p-2 flex items-center justify-between shrink-0' },
             h('div', { className: 'flex items-center gap-2' },
                 h('div', {
-                    className: 'w-8 h-8 rounded-full border-2 border-black overflow-hidden flex items-center justify-center',
-                    style: { backgroundColor: myPlayer.color || '#FF3B30' }
+                    className: 'w-8 h-8 rounded-full overflow-hidden flex items-center justify-center player-avatar-frame',
+                    style: {
+                        backgroundColor: myCol,
+                        border: '3px solid ' + myCol,
+                        boxShadow: '0 0 10px ' + myCol + ', 2px 2px 0 #000000',
+                        '--current-player-color': myCol
+                    }
                 }, myHead),
                 h('div', null,
                     h('div', { className: 'font-black text-sm' }, myPlayer.name),

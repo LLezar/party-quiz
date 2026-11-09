@@ -407,6 +407,37 @@ p, span, label {
 }
 
 /* ==========================================================================
+   УВЕЛИЧЕННОЕ ОКНО С КАРТИНКОЙ В ВОПРОСАХ (.QUESTION-IMAGE-LARGE)
+   ========================================================================== */
+
+.question-image-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 0.85rem;
+  position: relative;
+  z-index: 10;
+}
+
+.question-image-large {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: clamp(240px, 34vh, 340px) !important;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  border: 4px solid #000000;
+  background-color: rgba(0, 0, 0, 0.55);
+  box-shadow: 6px 6px 0px #000000, 0 0 25px rgba(0, 0, 0, 0.6);
+  transition: transform 0.2s ease;
+}
+
+.question-image-large:hover {
+  transform: scale(1.02);
+}
+
+/* ==========================================================================
    ПОЛНОЭКРАННОЕ МУЛЬТЯШНОЕ ИГРОВОЕ ПОЛЕ
    ========================================================================== */
 
@@ -542,15 +573,14 @@ p, span, label {
   position: relative;
 }
 
-/* Мультяшная голова с селфи */
+/* Мультяшная голова с селфи: круглая рамка и свечение строго в цвет игрока */
 .pawn-selfie-head {
   width: 74px;
   height: 74px;
   border-radius: var(--radius-round);
-  border: 4px solid #000000;
-  box-shadow: 3px 3px 0px #000000, 0 0 14px var(--player-color, var(--accent-yellow)) !important;
+  border: 4px solid var(--player-color, var(--accent-yellow)) !important;
+  box-shadow: 0 0 16px var(--player-color, var(--accent-yellow)), 3px 3px 0px #000000 !important;
   background-color: var(--player-color, var(--accent-yellow)) !important;
-  border-color: #000000 !important;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -563,7 +593,7 @@ p, span, label {
   justify-content: center;
   font-size: 2.2rem;
   overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .pawn-selfie-head img {
@@ -632,7 +662,7 @@ p, span, label {
   transform: translateY(-6px) scale(1.2);
   z-index: 999;
   transform-origin: bottom center;
-  box-shadow: 0 0 16px var(--player-color, #ffffff), 3px 3px 0 #000000 !important;
+  box-shadow: 0 0 18px var(--player-color, #ffffff), 3px 3px 0 #000000 !important;
   animation: none;
 }
 
@@ -1234,6 +1264,9 @@ input[type="text"]:focus {
   .tv-container .quiz-btn .quiz-btn-text {
     font-size: clamp(1rem, 2vw, 1.3rem) !important;
   }
+  .question-image-large {
+    max-height: clamp(180px, 28vh, 260px) !important;
+  }
 }
 
 @media (orientation: portrait) and (min-width: 600px) {
@@ -1323,6 +1356,10 @@ input[type="text"]:focus {
     grid-template-columns: repeat(2, 1fr);
     grid-template-rows: repeat(3, auto);
     gap: 8px;
+  }
+
+  .question-image-large {
+    max-height: clamp(140px, 22vh, 200px) !important;
   }
 }
 
