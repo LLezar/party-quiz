@@ -63,6 +63,7 @@ window.GameSync = (function() {
         players: {},
         categoriesToVote: [],
         playedCategories: [],
+        playedQuestionIds: [],
         categoryVotes: {},
         playerAnswers: {},
         currentRound: 0,
@@ -72,7 +73,9 @@ window.GameSync = (function() {
         timerDuration: 0,
         timerKey: '',
         roundMoves: {},
-        winnerId: null
+        winnerId: null,
+        finishStep: 0,
+        standings: []
     };
 
     function triggerCallback() {
@@ -199,6 +202,19 @@ window.GameSync = (function() {
         }
 
         mergeDeep(localState, remoteData);
+
+        // Бесшовное слияние сыгранных вопросов с защитой от особенностей Firebase RTDB
+        if (Array.isArray(remoteData.playedQuestionIds)) {
+            localState.playedQuestionIds = remoteData.playedQuestionIds.slice();
+        } else if (remoteData.playedQuestionIds && typeof remoteData.playedQuestionIds === 'object') {
+            var restoredIds = [];
+            for (var rk in remoteData.playedQuestionIds) {
+                if (Object.prototype.hasOwnProperty.call(remoteData.playedQuestionIds, rk)) {
+                    restoredIds.push(remoteData.playedQuestionIds[rk]);
+                }
+            }
+            localState.playedQuestionIds = restoredIds;
+        }
 
         if (myPlayerId && myLocalPlayerBackup && (!localState.players || !localState.players[myPlayerId])) {
             if (!localState.players) localState.players = {};
@@ -585,7 +601,7 @@ window.GameSync = (function() {
     };
 })();
 
-// Сжатие квадратного селфи для сохранения легкого трафика
+// Сжатие квадратного селфи высокого разрешения для четкого отображения на гигантском пьедестале
 window.captureSelfie = function(videoElement, customSize, customQuality) {
     return new Promise(function(resolve) {
         if (!videoElement) {
@@ -603,8 +619,8 @@ window.captureSelfie = function(videoElement, customSize, customQuality) {
 
         try {
             var canvas = document.createElement('canvas');
-            var targetSize = (customSize !== undefined && customSize !== null) ? customSize : 120;
-            var quality = (customQuality !== undefined && customQuality !== null) ? customQuality : 0.65;
+            var targetSize = (customSize !== undefined && customSize !== null) ? customSize : 360;
+            var quality = (customQuality !== undefined && customQuality !== null) ? customQuality : 0.85;
 
             canvas.width = targetSize;
             canvas.height = targetSize;
