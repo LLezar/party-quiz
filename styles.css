@@ -413,12 +413,10 @@ p, span, label {
    ========================================================================== */
 
 .question-image-container {
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-  width: -webkit-fit-content !important;
-  width: -moz-fit-content !important;
-  width: fit-content !important;
+  display: inline-block !important;
+  align-self: center !important;
+  -webkit-align-self: center !important;
+  width: auto !important;
   max-width: 100% !important;
   height: auto !important;
   margin: 0 auto 14px auto !important;
@@ -426,9 +424,8 @@ p, span, label {
   background: transparent !important;
   background-color: transparent !important;
   border: none !important;
-  border-radius: 16px !important;
-  overflow: hidden !important;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: none !important;
+  line-height: 0 !important;
   position: relative;
   z-index: 10;
 }
@@ -437,13 +434,15 @@ p, span, label {
   display: block !important;
   width: auto !important;
   height: auto !important;
-  max-width: 100% !important;
-  max-height: clamp(180px, 34vh, 360px) !important;
+  max-width: min(100%, 720px) !important;
+  min-height: 180px !important;
+  max-height: clamp(200px, 36vh, 360px) !important;
   object-fit: contain !important;
-  border-radius: 14px !important;
-  border: none !important;
+  border-radius: 16px !important;
+  border: 3.5px solid #000000 !important;
+  background-color: rgba(15, 23, 42, 0.45) !important;
   margin: 0 auto !important;
-  box-shadow: none !important;
+  box-shadow: 5px 5px 0px #000000 !important;
   transition: transform 0.2s ease;
 }
 
@@ -1279,7 +1278,8 @@ input[type="text"]:focus {
     font-size: clamp(1rem, 2vw, 1.3rem) !important;
   }
   .question-image-large {
-    max-height: clamp(150px, 26vh, 260px) !important;
+    min-height: 140px !important;
+    max-height: clamp(160px, 28vh, 260px) !important;
   }
 }
 
@@ -1373,6 +1373,7 @@ input[type="text"]:focus {
   }
 
   .question-image-large {
+    min-height: 120px !important;
     max-height: clamp(130px, 22vh, 200px) !important;
   }
 }

@@ -107,6 +107,124 @@ function isSafeImageSrc(src) {
     return src.indexOf('data:image/') === 0 || src.indexOf('https://') === 0;
 }
 
+// Умный компонент картинки вопроса: автоматически обрезает зашитые белые/прозрачные поля по краям
+function SmartQuestionImage(props) {
+    var src = props.src;
+    var displaySrcState = useState(src);
+    var displaySrc = displaySrcState[0];
+    var setDisplaySrc = displaySrcState[1];
+
+    useEffect(function() {
+        setDisplaySrc(src);
+        if (!src) return;
+
+        var isCancelled = false;
+        var img = new Image();
+        img.crossOrigin = 'Anonymous';
+
+        img.onload = function() {
+            if (isCancelled) return;
+            try {
+                var w = img.naturalWidth || img.width;
+                var hImg = img.naturalHeight || img.height;
+                if (!w || !hImg || w > 2200 || hImg > 2200) return;
+
+                var canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = hImg;
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+
+                var imgData = ctx.getImageData(0, 0, w, hImg);
+                var data = imgData.data;
+
+                function isBorderPixel(x, y) {
+                    var idx = (y * w + x) * 4;
+                    var r = data[idx];
+                    var g = data[idx + 1];
+                    var b = data[idx + 2];
+                    var a = data[idx + 3];
+                    if (a < 25) return true;
+                    // Считаем белые и почти белые пиксели фоновой рамкой
+                    return (r >= 236 && g >= 236 && b >= 236);
+                }
+
+                // Проверяем, действительно ли углы картинки белые/пустые
+                if (!isBorderPixel(0, 0) && !isBorderPixel(w - 1, 0) && !isBorderPixel(0, hImg - 1) && !isBorderPixel(w - 1, hImg - 1)) {
+                    return;
+                }
+
+                var top = 0, bottom = hImg - 1, left = 0, right = w - 1;
+
+                while (top < bottom) {
+                    var rowWhite = true;
+                    for (var x1 = 0; x1 < w; x1 += 2) {
+                        if (!isBorderPixel(x1, top)) { rowWhite = false; break; }
+                    }
+                    if (!rowWhite) break;
+                    top++;
+                }
+
+                while (bottom > top) {
+                    var rowWhiteB = true;
+                    for (var x2 = 0; x2 < w; x2 += 2) {
+                        if (!isBorderPixel(x2, bottom)) { rowWhiteB = false; break; }
+                    }
+                    if (!rowWhiteB) break;
+                    bottom--;
+                }
+
+                while (left < right) {
+                    var colWhiteL = true;
+                    for (var y1 = top; y1 <= bottom; y1 += 2) {
+                        if (!isBorderPixel(left, y1)) { colWhiteL = false; break; }
+                    }
+                    if (!colWhiteL) break;
+                    left++;
+                }
+
+                while (right > left) {
+                    var colWhiteR = true;
+                    for (var y2 = top; y2 <= bottom; y2 += 2) {
+                        if (!isBorderPixel(right, y2)) { colWhiteR = false; break; }
+                    }
+                    if (!colWhiteR) break;
+                    right--;
+                }
+
+                var cropW = right - left + 1;
+                var cropH = bottom - top + 1;
+
+                // Если нашли заметную белую рамку (> 6% площади) — аккуратно отрезаем её
+                if (cropW > 40 && cropH > 40 && (cropW < w * 0.94 || cropH < hImg * 0.94)) {
+                    var outCanvas = document.createElement('canvas');
+                    outCanvas.width = cropW;
+                    outCanvas.height = cropH;
+                    var outCtx = outCanvas.getContext('2d');
+                    outCtx.drawImage(canvas, left, top, cropW, cropH, 0, 0, cropW, cropH);
+                    var croppedDataUrl = outCanvas.toDataURL('image/jpeg', 0.92);
+                    if (!isCancelled) {
+                        setDisplaySrc(croppedDataUrl);
+                    }
+                }
+            } catch (err) {
+                // Если сервер картинки блокирует CORS — просто оставляем оригинальный URL
+            }
+        };
+
+        img.src = src;
+        return function() { isCancelled = true; };
+    }, [src]);
+
+    return h('div', { className: 'question-image-container' },
+        h('img', {
+            src: displaySrc,
+            alt: 'Question',
+            className: 'question-image-large'
+        })
+    );
+}
+
 function getSortedStandings(playersObj) {
     var list = [];
     if (playersObj) {
@@ -944,7 +1062,6 @@ function TVApp(props) {
                             timerKey: 'podium_' + nextStep + '_' + Date.now()
                         });
                     } else {
-                        // Церемония награждения топ-3 завершена: возврат в лобби с сохранением игроков и обнулением позиций
                         if (podiumAudioRef.current) {
                             try {
                                 podiumAudioRef.current.pause();
@@ -1199,13 +1316,7 @@ function TVApp(props) {
 
         var imageElement = null;
         if (currentQ.imageUrl && isSafeImageSrc(currentQ.imageUrl)) {
-            imageElement = h('div', { className: 'question-image-container' },
-                h('img', {
-                    src: currentQ.imageUrl,
-                    alt: 'Question',
-                    className: 'question-image-large'
-                })
-            );
+            imageElement = h(SmartQuestionImage, { src: currentQ.imageUrl });
         }
 
         phaseContent = h('div', { key: 'question-card-' + currentQuestionIndex, className: 'glass-card p-6 md:p-8 text-center max-w-4xl w-full my-auto' },
