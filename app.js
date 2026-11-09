@@ -1202,7 +1202,7 @@ function TVApp(props) {
             imageElement = h('div', { className: 'question-image-container' },
                 h('img', {
                     src: currentQ.imageUrl,
-                    alt: 'question',
+                    alt: 'Question',
                     className: 'question-image-large'
                 })
             );
